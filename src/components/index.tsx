@@ -1215,7 +1215,12 @@ export function GIDivider({ vertical = false, length = "100%" }: { vertical?: bo
   return (
     <div
       ref={ref as React.RefObject<HTMLDivElement>}
-      style={vertical ? { width: 2, height: length, borderRadius: 2, flex: "none" } : { width: length, height: 2, borderRadius: 2, flex: "none" }}
+      // Horizontal: shrinkable (default flex shrink + minWidth:0) so two
+      // dividers in a flex row (e.g. an "OR" separator) share the row instead of
+      // each demanding 100% width and OVERFLOWING into the next component — GI
+      // shapes render on the full-page canvas, so an overflow drew a carved line
+      // straight across the neighbouring card. In block context this is a no-op.
+      style={vertical ? { width: 2, height: length, borderRadius: 2, flex: "none" } : { width: length, height: 2, borderRadius: 2, minWidth: 0 }}
     />
   );
 }

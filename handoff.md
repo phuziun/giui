@@ -785,54 +785,79 @@ the shape; `live:true` re-measures every frame (dragged/animated elements); `lay
 
 ---
 
-## Current state (where this session ended)
+## Current state (where this session ended — updated 2026-07-04)
 
 **The project goal** (user's words): a dark neumorphic component framework that "just
 works" and is somewhat customizable, rendered performantly and physically instead of
 tweaking a million gradients.
 
-**What exists now:**
-- **Framework**: `<GIProvider theme quality params showPerf>` — one `theme.accent`
-  recolors the whole kit (verified: orange swap, the bounced light follows); `quality`
-  presets co-tune perf knobs; GPU self-diagnosis + FPS HUD + diag beacon built in.
-- **Site** (hash routes, nav = the kit itself: lit Surface bar + emissive logo dot +
-  controlled `GISegmented`): `#/` landing (FluidHero SCREEN + bloom + recess, then the
-  three Feature cards + stats — the Appearance showcase card + two info cards and the
-  draggable HeroLight were removed 2026-07; the hero screen is now the landing's only
-  set piece), `#/components` (zoo of ~40), `#/templates` (Dashboard,
-  Inbox, Sign-in, Settings, Pricing), `#/studio` (leva panel — hidden elsewhere — presets
-  manager, live tuning preview). The FPS HUD is also **Studio-only** now
-  (`showPerf && route === "studio"` in App.tsx).
-- **Hero GI-overflow asymmetry (investigated 2026-07)**: the user noticed the band's
-  glow washes the nav far more than the cards below. Measured (CDP strip-luminance,
-  bloom overlay hidden/shown): NOT a renderer bug and NOT a top-heavy fluid (source-
-  texture row profile over time: top third is actually dimmest). It's a compound of
-  (a) the nav hugging the band's top edge (~18px gap) while content below sits ~2.5×
-  farther, (b) the nav being one full-width component — full `giStrength` gather via
-  `giMask` (composite.wgsl:184) across its whole face, while below the band the field
-  crosses bare backplate at `giBackground` 0.14 before reaching the cards, and (c) the
-  DOM bloom overlay (blur 30px ≈ 60–90px reach) covering 100% of the nav gap. To tame
-  it: more space under the nav, lower the bloom overlay opacity, or lower `emit`.
-- **Look**: preset1 mood (calm/dark, subdued glows) + the SCREEN hero. All perceptual
-  perf issues resolved and VERIFIED on the user's own hardware: 120fps @ scale 1.0,
-  scroll p99 14ms, idle skips/ambient-30Hz, boot non-blocking. The user confirmed it
-  finally "feels really good".
-- Verification workflow (screenshots + real-time CDP measurement + the diag beacon) is
-  described in Run & verify + the perf bullets; memory file `webgpu-headless-verify`
-  mirrors it.
+### ⚠ Repo / deploy / git status — READ FIRST
+- **GitHub repo EXISTS**: `github.com/phuziun/giui` (public). Owner is GitHub user
+  **`phuziun`** (id 11510188). `gh` CLI is authed. Local git identity is set per-repo
+  to `Dave Hale <11510188+phuziun@users.noreply.github.com>` (privacy noreply — do NOT
+  use the gmail).
+- **⛔ ONLY `git push` WHEN THE USER EXPLICITLY ASKS.** Commit locally freely, never
+  push unprompted (see memory `git-push-permission`). At session end there were
+  **several local commits AHEAD of origin/main, unpushed** (check with
+  `git log --oneline origin/main..HEAD`) — tell the user they can push when ready;
+  do not push for them.
+- **Live demo**: GitHub Pages at **https://phuziun.github.io/giui/** — auto-deploys on
+  push to `main` via `.github/workflows/deploy.yml` (npm ci → build → deploy-pages).
+  Pages source = GitHub Actions, HTTPS enforced (WebGPU needs it).
+- **Vite `base`**: `/giui/` for `build`, `/` for dev (`vite.config.ts`, keyed on
+  `command`) so the local server + headless tooling still hit `localhost:5174/`.
+  Override with `VITE_BASE` (e.g. `/` for a future apex custom domain).
+- **License**: `LICENSE.md` = PolyForm Small Business 1.0.0 (source-available; free
+  under 100 people/$1M rev, larger orgs buy a commercial license). Favicon = glowing
+  orb on a dark chip (`public/favicon.svg` + PNG fallbacks, base-aware links).
 
-Tip: to diagnose relief, force the normal view via the leva *seed* — `App.tsx` seeds
-`debugMode` from a hardcoded literal (`seed("debugMode", 0)`), NOT `DEFAULT_PARAMS`, so
-setting `DEFAULT_PARAMS.debugMode` does nothing on a fresh profile.
+### Pending decisions (owner mulling — do NOT change unprompted)
+- **Real name**: "Dave Hale" still appears in LICENSE/README copyright notice +
+  package.json author. Owner was unsure about using it; hasn't decided. `davehale.net`
+  domain also carries the name (see below).
+- **Donate link**: still `https://davehale.net/donate` (placeholder) in README,
+  `.github/FUNDING.yml`, package.json `funding`, and the footer was removed. Owner may
+  move to GitHub Sponsors (needs them to enrol). Project/homepage links already point
+  at the GitHub repo (moved off `davehale.net/giui`).
+
+### What exists now
+- **Framework**: `<GIProvider theme quality params showPerf>` — one `theme.accent`
+  recolors the whole kit; `quality` presets co-tune perf knobs; GPU self-diagnosis +
+  FPS HUD (Studio-only: `showPerf && route==="studio"`) + diag beacon.
+- **Site** (hash routes): `#/` **landing**, `#/components` (zoo of ~40), `#/templates`
+  (Dashboard/Inbox/Sign-in/Settings/Pricing), `#/studio` (leva panel + preset manager,
+  hidden elsewhere).
+- **Landing hero** = the **projected-wordmark screen** (see the FluidHero section
+  above): the fluid SCREEN with the "giui" wordmark painted INTO the projection as a
+  light-amplifier, warm-cool no-magenta palette, whole-word surge + electric-staccato
+  decay, slow hum scanline, film grain, RGB split, analog CRT finish. Below it: 3
+  Feature cards + 3 GIStat cards (all one blue accent). NO footer, no tagline/CTA block
+  (removed). `emit 0.15`, `display 3.7`.
+- **Nav (non-home routes) = matte bar with a "Hue-lights-behind-a-TV" backlight**:
+  `NavGlow` hidden emitters behind the bar, the bar + tab switcher are `matte` (the
+  new **matte feature** — receive no GI, so the light lands AROUND them not on their
+  faces), composite dilates the matte to swallow the bevel lip (no bright rim). The
+  logo lights up as **multi-colour alternating** letters (`LitWordmark`). Emitter
+  `emission scale 0.042`. On home the nav is a plain stamped bar (no backlight).
+  ⚠ This took ~15 iterations — read the NAV BACKLIGHT + `matte` bullets before touching.
+- **Density**: dense components (radii ~9, tight padding), airy layout (zoo gap 32,
+  landing section gaps 30). **Slider** fill glow scales ±30% with value.
+- **Scroll**: `overflow:clip` on the GI root (runaway-scroll fix) + manual
+  `scrollRestoration` — see the viewport-canvas bullet. Don't remove either.
+- **Persistence**: `SCHEMA_VERSION = 15`; hand-placed orb lights default OFF.
+
+Verification workflow (headless-Chrome screenshots + real-time CDP measurement + diag
+beacon) is in *Run & verify* + the perf bullets; memory `webgpu-headless-verify` mirrors
+it. Tip: to diagnose relief, set `seed("debugMode", 2)` in App.tsx (the seed literal, NOT
+`DEFAULT_PARAMS`, drives a fresh profile).
 
 ## Roadmap (agreed next steps, in rough priority)
-- **Public release** (stated 2026-07): GitHub repo + demo hosted at
-  `davehale.net/giui`. DONE 2026-07: `LICENSE.md` = PolyForm Small Business 1.0.0
-  (verbatim official text + Required Notice line), license/author/funding fields in
-  package.json, `.github/FUNDING.yml` + README "License & support" section. The
-  donate URL (`davehale.net/donate`) is a PLACEHOLDER — swap for GitHub Sponsors /
-  Ko-fi when set up. If outside PRs are accepted, add a CLA/DCO note so commercial
-  relicensing rights are retained.
+- **Public release** — mostly DONE (see "Repo / deploy / git status" above): repo live,
+  GitHub Pages deploying, PolyForm license, favicon. Remaining/optional: owner decides
+  on donate → GitHub Sponsors (and whether to keep the real name / `davehale.net`);
+  eventual home-server host (Caddy + Cloudflare Tunnel) under `giui.davehale.net`
+  (prefer a subdomain over a `/giui` subpath — avoids Vite base fuss). If outside PRs
+  are accepted, add a CLA/DCO note so commercial relicensing rights are retained.
 - **App-shell components**: AppBar, NavRail, Drawer/Sheet — the frame for real apps, and
   an app-shell template exercising them.
 - **Snackbar queue** (imperative `toast()` API) building on `GIToast`.

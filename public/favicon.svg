@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <!-- dark neumorphic chip -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b202a"/>
+      <stop offset="1" stop-color="#090b10"/>
+    </linearGradient>
+    <!-- main emissive orb bloom (accent cyan) -->
+    <radialGradient id="glowA" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#9fe0ff"/>
+      <stop offset=".22" stop-color="#3faaed"/>
+      <stop offset=".55" stop-color="#1f6bd0" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#1f6bd0" stop-opacity="0"/>
+    </radialGradient>
+    <!-- GI bounce: green-teal -->
+    <radialGradient id="glowB" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#37d79a" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#37d79a" stop-opacity="0"/>
+    </radialGradient>
+    <!-- GI bounce: warm -->
+    <radialGradient id="glowC" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff9d3c" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#ff9d3c" stop-opacity="0"/>
+    </radialGradient>
+    <!-- the emissive dot body -->
+    <radialGradient id="orb" cx="38%" cy="34%" r="72%">
+      <stop offset="0" stop-color="#f2fbff"/>
+      <stop offset=".5" stop-color="#7fcbf6"/>
+      <stop offset="1" stop-color="#2b8ad4"/>
+    </radialGradient>
+    <!-- top bevel highlight -->
+    <linearGradient id="bevel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#454e60" stop-opacity=".85"/>
+      <stop offset=".14" stop-color="#454e60" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="clip"><rect x="2" y="2" width="60" height="60" rx="15"/></clipPath>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)"/>
+
+  <g clip-path="url(#clip)">
+    <!-- coloured light bouncing across the dark surface -->
+    <circle cx="21" cy="43" r="30" fill="url(#glowB)"/>
+    <circle cx="45" cy="45" r="27" fill="url(#glowC)"/>
+    <circle cx="32" cy="30" r="31" fill="url(#glowA)"/>
+    <!-- the glowing dot + hot glint -->
+    <circle cx="32" cy="30" r="9" fill="url(#orb)"/>
+    <circle cx="29" cy="27" r="2.6" fill="#ffffff" opacity=".9"/>
+    <!-- neumorphic top-edge highlight -->
+    <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bevel)"/>
+  </g>
+
+  <!-- crisp inset rim (depth) -->
+  <rect x="2.5" y="2.5" width="59" height="59" rx="14.5" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="1"/>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="none" stroke="#616b80" stroke-opacity=".22" stroke-width=".75"/>
+</svg>

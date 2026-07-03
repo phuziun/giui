@@ -545,7 +545,15 @@ export function GICanvas({
           and the DOM together as one layer — no per-scroll re-measure, no lag.
           Shapes are measured in content coords (stable across scroll). The
           scroll container is `.stage` (overflow-y:auto). */}
-      <div ref={rootRef} style={{ position: "relative", width: "100%", minHeight: "100%" }}>
+      {/* overflow:clip is load-bearing in viewport-canvas mode: the canvas is
+          absolute at 100vh+overscan and translated down by the scroll offset
+          each render, which would otherwise EXTEND the document's scrollable
+          height as you scroll (runaway "scroll past the content" — the canvas's
+          transformed bottom kept pushing scrollHeight down). Clipping the root
+          pins scrollHeight to the content height. It doesn't hide the visible
+          canvas (content spans the page, so the viewport slice is always inside
+          the root box) — only the off-screen overscan overhang is clipped. */}
+      <div ref={rootRef} style={{ position: "relative", width: "100%", minHeight: "100%", overflow: "clip" }}>
         <canvas
           ref={canvasRef}
           style={{

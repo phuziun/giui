@@ -112,7 +112,17 @@ only this cheap pass at full res is what keeps it fast on hi-dpi displays.
   renders, so stale lighting stays glued to what it was rendered for; the trade-off
   shifts from "everything slips" to "edges beyond the 200px overscan are briefly unlit
   on very fast flings". This also fixes elastic-overscroll drift by construction (the
-  canvas rubber-bands with the content). Shapes stay in **content coords** (measured against the in-flow root — nothing
+  canvas rubber-bands with the content). ⚠ **The root MUST have `overflow: clip`**
+  (`GIContext` root div): the absolute canvas is `height:100vh+overscan` and its
+  `translate3d(0, top, 0)` grows with scroll, so its transformed bottom keeps
+  EXTENDING the document scrollHeight → a runaway "scroll past the content" (each
+  scroll adds ~overscan of empty space; owner reported it). `overflow:clip` on the
+  root pins scrollHeight to the content height without hiding the visible canvas
+  (content spans the page, so the viewport slice is always inside the root box;
+  only off-screen overscan is clipped). Fixed elements (dialog/palette/HUD) aren't
+  clipped — root has no transform, so it isn't their containing block. Also
+  `history.scrollRestoration = "manual"` (main.tsx) so reloads open at the top.
+  Shapes stay in **content coords** (measured against the in-flow root — nothing
   re-measures on scroll); the scene pass shifts sampling by a `scrollY` uniform
   (`Globals[12]`, buffer grown 48→64B). On scroll: passive listener → `needsRender`; a
   changed offset forces a (viewport-sized, cheap ~1ms) full re-render of the target.
@@ -606,9 +616,12 @@ the same three recipes: carved well / raised chip / emissive accent):
   Earlier attempts (giant black DOM h1; translucent-dark fillText) were rejected
   as too hard / not analog. NO in-flow hero content — band is a 430px spacer;
   tagline/CTA/badge blurb REMOVED. `HeroGlow` deleted. Feature dots + GIStat
-  badges use the one blue theme accent. **`emit` history**: 0.95→0.48→0.35→
-  **0.21** (owner: "reduce screen GI 40%"); `display` 3.2 unchanged so the
-  in-band picture keeps its punch while spill onto the page dropped. The band also has an
+  badges use the one blue theme accent. **`emit` history** (screen's GI spill onto
+  the page): 0.95→0.48→0.35→0.21 (−40%)→**0.15** (a further −30%, owner);
+  **`display` 3.2→3.7** (owner: screen a touch brighter as pools pass over it) —
+  display is the visible-picture brightness, DECOUPLED from emit, so the screen
+  brightens without adding page spill (that's the key lever: emit = spill,
+  display = screen brightness). The band also has an
   **analog screenspace finish** (`.crt-overlay`, index.css + `makeCrtTiles()` in
   Landing.tsx): ORGANIC scanlines (a generated 128×88 canvas tile — jittered
   spacing 3–5.4px, thickness, per-line alpha, darker sub-segments; the uniform

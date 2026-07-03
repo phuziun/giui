@@ -1,0 +1,352 @@
+:root {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  /* Close to the lit scene's average background, so the moment before the
+     first GI frame fades in doesn't read as a different (lighter) page. */
+  background: #1e222b;
+}
+
+/* The DOCUMENT is the scroll container (not an overflow div): document
+   scrolling always stays on the compositor thread — an inner scroller with a
+   huge canvas child can fall off that fast path and feel sluggish.
+   overscroll-behavior kills the macOS elastic bounce: the rubber-band
+   translation happens on the compositor and is invisible to the page, so the
+   (fixed) light canvas can't follow it — text would drift off its lighting at
+   the scroll extremes.
+   NB: html ONLY. A non-visible overflow-x on body computes body's overflow-y
+   to auto, making body a second (non-scrolling) scroll container — and
+   overscroll-behavior:none on it then BLOCKS wheel scroll chaining to the
+   viewport entirely: wheel scrolling goes dead while scrollTo still works. */
+html {
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+.stage {
+  width: 100%;
+}
+
+.layout {
+  position: relative;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 56px 32px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 34px;
+  pointer-events: none;
+}
+
+/* The featured settings card keeps the original narrow column width. */
+.feature {
+  max-width: 500px;
+}
+
+/* Re-enable interaction on the actual controls. */
+.layout button,
+.layout [role="button"],
+.row > *,
+.grid > *,
+.settings-row > *,
+.zoo-demo > * {
+  pointer-events: auto;
+}
+
+/* Component zoo: a responsive grid of labeled demo tiles. */
+.zoo {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+}
+
+.zoo-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: rgba(150, 162, 184, 0.62);
+  margin-bottom: 14px;
+}
+
+.zoo-demo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  min-height: 48px;
+}
+
+@media (max-width: 900px) {
+  .zoo {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Component animations. The GI shapes are `live`, so they track these CSS
+   transforms/positions every frame (the compositor drives the motion). */
+@keyframes gi-progress-sweep {
+  from { left: 0%; }
+  to { left: 70%; }
+}
+.gi-progress-sweep {
+  animation: gi-progress-sweep 1.3s ease-in-out infinite alternate;
+}
+
+@keyframes gi-dot-pulse {
+  0%, 100% { transform: scale(0.55); }
+  50% { transform: scale(1.15); }
+}
+.gi-dot-pulse {
+  animation: gi-dot-pulse 1.05s ease-in-out infinite;
+}
+
+@keyframes gi-spin {
+  to { transform: rotate(360deg); }
+}
+.gi-spin {
+  animation: gi-spin 0.9s linear infinite;
+}
+
+/* Landing hero: lava-lamp blobs bobbing on offset phases (the colour cycle is
+   JS-driven), and a gentle breathing scale on the hero's glow bar. */
+@keyframes gi-lava-rise {
+  from { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-80px) translateX(6px); }
+  to { transform: translateY(-160px) translateX(-4px); }
+}
+.gi-lava-a {
+  animation: gi-lava-rise 12s ease-in-out infinite alternate;
+}
+.gi-lava-b {
+  animation: gi-lava-rise 16s ease-in-out infinite alternate -6s;
+}
+.gi-lava-c {
+  animation: gi-lava-rise 9s ease-in-out infinite alternate -3s;
+}
+
+@keyframes gi-breathe {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(1.4); }
+}
+.gi-breathe {
+  animation: gi-breathe 2.6s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gi-progress-sweep,
+  .gi-dot-pulse,
+  .gi-spin,
+  .gi-lava-a,
+  .gi-lava-b,
+  .gi-lava-c,
+  .gi-breathe {
+    animation: none;
+  }
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -0.5px;
+  font-weight: 700;
+  color: rgba(228, 234, 246, 0.95);
+}
+
+.hero p {
+  margin: 4px 0 0;
+  color: rgba(150, 162, 184, 0.6);
+  font-size: 13px;
+}
+
+/* Landing hero: full-bleed fluid light-field band (escapes the centered
+   layout column to run edge-to-edge). */
+.fluid-hero {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  min-height: 380px;
+}
+
+/* Analog finish for the hero screen — pure screenspace DOM over the lit
+   canvas: fine scanlines + corner vignette, and a slow dark "hum bar"
+   rolling down the picture. Dark-only (the aesthetic rule: motion, never
+   added brightness). */
+.crt-overlay {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(135% 125% at 50% 50%, transparent 68%, rgba(5, 6, 10, 0.38) 100%);
+}
+
+/* Organic scanlines: a generated tile (jittered spacing/alpha per line —
+   see makeCrtTiles in Landing.tsx) instead of a mechanical uniform gradient. */
+.crt-scan {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+}
+
+/* Animated film grain: a generated noise tile, jumped around by steps() so it
+   re-rolls ~11x/s like film. Oversized so the jumps never expose an edge;
+   compositor-only (transform on a cached filtered layer), zero GPU/GI cost.
+   Soft on purpose — upscaled tile + a hair of blur — and it paints UNDER the
+   scanlines (grain lives in the projected signal, scanlines on the tube face).
+   `screen` blend = shadow grain: the noise lifts DARK areas with speckle and
+   mathematically fades to nothing over bright pools (like film, where grain is
+   the noise floor under a weak signal). */
+.crt-grain {
+  position: absolute;
+  inset: -25%;
+  background-repeat: repeat;
+  background-size: 210px 210px;
+  filter: blur(0.8px);
+  mix-blend-mode: screen;
+  opacity: 0.08;
+  animation: gi-grain 0.72s steps(1, end) infinite;
+}
+@keyframes gi-grain {
+  0%    { transform: translate(0, 0); }
+  12.5% { transform: translate(-38px, 21px); }
+  25%   { transform: translate(23px, -44px); }
+  37.5% { transform: translate(-51px, -9px); }
+  50%   { transform: translate(12px, 33px); }
+  62.5% { transform: translate(-27px, -30px); }
+  75%   { transform: translate(41px, 6px); }
+  87.5% { transform: translate(-9px, -49px); }
+  100%  { transform: translate(0, 0); }
+}
+/* NB: the slow "hum" scanline that darkens the picture and lights up the
+   wordmark is now painted INTO the source canvas (see FluidHero) so the two
+   effects stay in sync — the old DOM hum bars (::before/::after) were removed. */
+@media (prefers-reduced-motion: reduce) {
+  .crt-grain { animation: none; }
+}
+
+/* Top navigation (in the light field, above the routed content). */
+.topnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 6px;
+}
+
+.wordmark {
+  font-size: 21px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  /* Stamped into the bar (letterpress): the glyph is darker than the surface;
+     the key light comes from the upper-left, so the recess's lower-right inner
+     edge catches a sliver of light and the upper-left edge falls into shadow. */
+  color: rgba(9, 11, 16, 0.9);
+  text-shadow:
+    1px 1.5px 1px rgba(195, 210, 240, 0.11),
+    -1px -1px 1.5px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.page-head h2 {
+  margin: 10px 0 0;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  font-weight: 720;
+  color: rgba(228, 234, 246, 0.95);
+}
+
+.page-head p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(158, 168, 190, 0.65);
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 650;
+  margin-bottom: 14px;
+  color: rgba(222, 228, 240, 0.92);
+}
+
+.card-title.small {
+  margin-bottom: 6px;
+}
+
+.muted {
+  margin: 0;
+  color: rgba(150, 160, 182, 0.62);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+}
+
+.settings-row .label {
+  font-size: 13px;
+  color: rgba(190, 198, 216, 0.78);
+}
+
+.gi-field::placeholder {
+  color: rgba(150, 160, 180, 0.6);
+}
+.gi-field:focus::placeholder {
+  color: rgba(180, 192, 214, 0.75);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.gi-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px;
+  color: rgba(255, 230, 230, 0.9);
+  background: rgba(20, 6, 8, 0.7);
+}
+
+.gi-error strong {
+  font-size: 20px;
+}
+
+.gi-error p {
+  max-width: 460px;
+  color: rgba(230, 200, 200, 0.7);
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

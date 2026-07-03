@@ -22,6 +22,10 @@ export type GIShapeProps = {
   /** Paint priority: higher paints over lower regardless of area. Overlays
    *  (dialog/menu/tooltip panels) use 1+; page content stays 0. */
   layer?: number;
+  /** Receive NO GI bounce — a light placed behind this component lights the
+   *  surroundings but not the component's own face. Encoded via a tint sentinel
+   *  (so it can't be combined with a custom `tint`). */
+  matte?: boolean;
 };
 
 const DEFAULTS = {
@@ -77,7 +81,9 @@ export function useGIShape(props: GIShapeProps) {
       emission,
       opacity: p.opacity ?? DEFAULTS.opacity,
       displayScale: p.displayScale ?? 1,
-      tint: p.tint ?? 0,
+      // matte packs (tint - 2) as a sentinel the composite decodes (< -0.5 ⇒ no
+      // GI reception, real tint = stored + 2); keeps the shape's normal tint.
+      tint: p.matte ? (p.tint ?? 0) - 2 : p.tint ?? 0,
       bodyAlpha: p.bodyAlpha ?? 1,
       heightScale: p.heightScale ?? -1,
       layer: p.layer ?? 0,

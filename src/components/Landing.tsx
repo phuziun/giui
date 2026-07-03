@@ -560,17 +560,20 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
 // top:0/100% puts each blob entirely in the margin above/below the bar, so no
 // emitter sits behind the bar's face — the glow rims the edges and washes the
 // area, and the face stays comparatively dark ("light behind the component").
-// Many overlapping emitters along the top and bottom margins → a continuous,
-// smooth rim of light rather than a few visible "sources".
+// Emitters sit DIRECTLY BEHIND the bar (centred, spread across its width). The
+// bar is `matte` (receives no GI — see Surface), so their light never lands on
+// its face; it only escapes around the bar to wash the surroundings — the light
+// is truly "behind the component". Small + a tight container inset keep the
+// escaping light close to the edge, so the rim stays thin.
 const NAV_BLOBS = [
-  { left: 8, top: 0, size: 60, cls: "gi-nav-a" },
-  { left: 22, top: 100, size: 56, cls: "gi-nav-b" },
-  { left: 35, top: 0, size: 58, cls: "gi-nav-c" },
-  { left: 48, top: 100, size: 56, cls: "gi-nav-a" },
-  { left: 61, top: 0, size: 60, cls: "gi-nav-b" },
-  { left: 74, top: 100, size: 56, cls: "gi-nav-c" },
-  { left: 87, top: 0, size: 58, cls: "gi-nav-a" },
-  { left: 97, top: 100, size: 54, cls: "gi-nav-b" },
+  { left: 6, top: 50, size: 40, cls: "gi-nav-a" },
+  { left: 19, top: 50, size: 38, cls: "gi-nav-b" },
+  { left: 32, top: 50, size: 40, cls: "gi-nav-c" },
+  { left: 45, top: 50, size: 38, cls: "gi-nav-a" },
+  { left: 58, top: 50, size: 40, cls: "gi-nav-b" },
+  { left: 71, top: 50, size: 38, cls: "gi-nav-c" },
+  { left: 84, top: 50, size: 40, cls: "gi-nav-a" },
+  { left: 95, top: 50, size: 38, cls: "gi-nav-b" },
 ];
 
 function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; cls: string; left: number; top: number }) {
@@ -579,7 +582,7 @@ function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; c
     albedo: color,
     // Subtle: rawGlow bypasses the 0.05 componentGlow master, so keep emission
     // low — this is an ambient wash around the bar, not a floodlight.
-    emission: scale(color, 0.075),
+    emission: scale(color, 0.28),
     opacity: 0.5, // radiates into the GI (emitters need opacity to cast light)
     bodyAlpha: 0, // hidden — no visible body/display, only the light it casts
     rawGlow: true,
@@ -601,7 +604,7 @@ export function NavGlow() {
   }, []);
   const win = hue / 360; // slides along the arc
   return (
-    <div style={{ position: "absolute", inset: -42, pointerEvents: "none" }} aria-hidden>
+    <div style={{ position: "absolute", inset: -8, pointerEvents: "none" }} aria-hidden>
       {NAV_BLOBS.map((b, i) => {
         // narrow warm-cool family around the sliding window, reflected → no magenta
         let pr = win + (i / NAV_BLOBS.length - 0.5) * 0.44;

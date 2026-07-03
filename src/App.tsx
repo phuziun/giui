@@ -504,7 +504,9 @@ export default function App() {
             {route !== "home" && <NavGlow />}
             {/* Off home the bar is more opaque so it occludes the backlight like
                 a solid TV — the hue light spills AROUND it, not through it. */}
-            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.95}>
+            {/* matte off home: the bar receives NO GI bounce, so the emitters
+                behind it (NavGlow) light AROUND it, never its own face. */}
+            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.95} matte={route !== "home"}>
               {route === "home" ? (
                 <span className="wordmark" onClick={() => nav("home")}>
                   giui
@@ -518,6 +520,7 @@ export default function App() {
                 index={ROUTES.indexOf(route)}
                 onChange={(i) => nav(ROUTES[i])}
                 width={410}
+                matte={route !== "home"}
               />
             </Surface>
           </div>

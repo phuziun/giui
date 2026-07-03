@@ -183,14 +183,20 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // per-shape tint (dispS.a) lifts the effective tint toward full albedo, so
   // inset elements can read truly dark regardless of the global tintAmount cap.
   let cover = clamp(alb.a, 0.0, 1.0);
-  let effTint = mix(L.tintAmount, 1.0, clamp(dispS.a, 0.0, 1.0));
+  // "Matte" components pack their tint as (tint - 2) → dispS.a < -0.5. Decode the
+  // real tint (add 2 back) so matte preserves the shape's normal tint appearance.
+  let matteFlag = select(0.0, 1.0, dispS.a < -0.5);
+  let realTint = select(dispS.a, dispS.a + 2.0, dispS.a < -0.5);
+  let effTint = mix(L.tintAmount, 1.0, clamp(realTint, 0.0, 1.0));
   let albedo = mix(L.material, alb.rgb, cover * effTint);
 
   // Confine the GI bounce to components, but mask by the *height field* (not just
   // the silhouette) so the raised/carved bevel slopes -- which extend past the
   // outline -- catch the bounce too, not only the flat interior.
   let hmask = smoothstep(0.0, 0.03, abs(nrm.w));
-  let giMask = mix(L.extra.z, 1.0, max(cover, hmask));
+  // A matte component receives NO GI bounce: a hidden emitter behind it lights
+  // everything AROUND it but never its own face ("light behind the component").
+  let giMask = mix(L.extra.z, 1.0, max(cover, hmask)) * (1.0 - matteFlag);
 
   // An emitter's own *visible* body shows its colour + display glow and should
   // not be re-lit by the bounce of its own emission, so suppress the GI there.

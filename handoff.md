@@ -663,23 +663,30 @@ the same three recipes: carved well / raised chip / emissive accent):
   GISegmented and GITabs). `GIToggle` gained `defaultOn`; `GIField` gained controlled
   `value`/`onChange`; `GITag` gained `onClick`.
   - **NAV BACKLIGHT (owner: "Hue lights behind a TV")** on non-home routes:
-    `NavGlow` (Landing.tsx) drifts ~8 HIDDEN emitters (`bodyAlpha:0`, no
-    display/body) FULLY OUTSIDE the bar — in the top/bottom margins (container
-    `inset:-42`, blobs at `top:0/100%`) — so none sit behind the bar's FACE.
-    They radiate a smooth warm-cool rim of light around the bar; the bar's face
-    stays dark ("light behind the component, not on top"). `emission scale 0.075`
-    (rawGlow bypasses the 0.05 componentGlow master, so keep it TINY), bar
-    `opacity` 0.55→0.95. The logo lights up as **multi-colour alternating**
-    letters (`LitWordmark` in App.tsx: each of "giui" gets its own cycling hue
-    off the reflected warm-cool arc) + emissive `LogoDot lit`.
-    ⚠ Dead ends (why it's built this way): (1) a SCREEN (display>0) projected the
-    fluid ONTO the bar's face — rejected. (2) emitters CENTRED behind the bar
-    still lit the face because this GI's component occlusion is low (`occlusion`
-    0.2 — light spreads across surfaces; a component can't act as an opaque "TV"
-    blocking light behind it), AND giMask confines GI to components so the bar
-    face actually receives MORE colour than the background. Only emitters placed
-    fully outside the face read as "behind". On home the nav is unchanged
-    (stamped `LogoDot` dimple, no glow) since FluidHero owns the one screen slot.
+    `NavGlow` (Landing.tsx) drifts ~8 HIDDEN emitters (`bodyAlpha:0`) DIRECTLY
+    BEHIND the bar (centred, tight `inset:-8`, small size) — the escaping light
+    forms a THIN glowing rim around the bar and washes the surroundings. The bar
+    and the tab switcher are **`matte`** (see the `matte` feature below), so they
+    receive NO GI bounce — the light lands on everything AROUND them but never
+    their own faces ("light behind the component, none on it", owner's exact
+    ask). `emission scale 0.28`; bar `opacity` 0.55→0.95. The logo lights up as
+    **multi-colour alternating** letters (`LitWordmark` in App.tsx: each of
+    "giui" gets its own cycling hue off the reflected warm-cool arc) + emissive
+    `LogoDot lit`. ⚠ Dead ends (why matte was needed): a SCREEN projected the
+    fluid ONTO the bar face; and emitters (behind OR in the margins) still lit
+    the face because this GI's component occlusion is low (`occlusion` 0.2) AND
+    `giMask` confines the bounce TO components (so a component receives MORE
+    colour than the background) — you can't block light behind a component
+    physically, hence the matte flag. On home the nav is unchanged (stamped
+    `LogoDot` dimple, no glow) since FluidHero owns the one screen slot.
+  - **`matte` FEATURE (useGIShape/`Surface`/`GISegmented`)**: a component that
+    receives NO GI bounce (its face isn't lit by nearby emitters/bounce; only
+    key/fill/ambient shade it). Encoding: matte packs `tint - 2` into the tint
+    channel (dispTex.a); the composite decodes `dispS.a < -0.5` → `matteFlag`,
+    real tint `= dispS.a + 2` (so matte preserves the shape's normal tint), and
+    `giMask *= (1 - matteFlag)`. No new uniform/target — reuses the tint channel.
+    Used for the nav bar + tab switcher over the backlight; reusable anywhere you
+    want "light behind, none on the object".
 - **Site structure**: a tiny hash router in `App.tsx` (`#/`, `#/components`, `#/templates`;
   `parseRoute`/`ROUTES`) with a `.topnav` (wordmark + **controlled `GITabs`** — `index`/
   `onChange` props added for exactly this). Routes: **Landing** (`src/components/Landing.tsx`

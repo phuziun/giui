@@ -46,6 +46,7 @@ export function Surface({
   // harsh steep lip looks wrong. Physical depth (shadow/AO) is unaffected.
   heightScale = 1.0,
   layer,
+  matte = false,
   className,
   id,
 }: {
@@ -61,6 +62,8 @@ export function Surface({
   heightScale?: number;
   /** Paint priority — overlay panels (dialog/menu) pass 1+ to paint over page content. */
   layer?: number;
+  /** Receive no GI bounce — a light behind this panel lights around it, not its face. */
+  matte?: boolean;
   className?: string;
   id?: string;
 }) {
@@ -71,6 +74,7 @@ export function Surface({
   const ref = useGIShape({
     albedo: albedo ?? (carved ? INSET_ALBEDO : SURFACE_ALBEDO),
     tint: carved ? 1 : 0,
+    matte,
     height: carved ? -Math.abs(height) : height,
     bevel,
     rolloff,
@@ -1063,6 +1067,7 @@ export function GISegmented({
   onChange,
   accent: accentProp,
   width = 240,
+  matte = false,
 }: {
   options: string[];
   defaultIndex?: number;
@@ -1071,6 +1076,8 @@ export function GISegmented({
   onChange?: (i: number) => void;
   accent?: Vec3;
   width?: number;
+  /** Receive no GI bounce (e.g. sitting over a backlight it should ignore). */
+  matte?: boolean;
 }) {
   const accent = useAccent(accentProp);
   const [internal, setInternal] = useState(defaultIndex);
@@ -1082,11 +1089,12 @@ export function GISegmented({
   const n = Math.max(1, options.length);
   const pad = 3;
   const segW = (width - pad * 2) / n;
-  const trackRef = useGIShape({ height: -0.35, bevel: 4, cornerRadius: 9, albedo: INSET_ALBEDO, tint: 1 });
+  const trackRef = useGIShape({ height: -0.35, bevel: 4, cornerRadius: 9, albedo: INSET_ALBEDO, tint: 1, matte });
   // Raised accent thumb; smaller area than the track, so it paints over it.
   const thumbRef = useGIShape({
     albedo: accent,
     tint: 1,
+    matte, // still emits its accent; just doesn't receive the backlight
     emission: scale(accent, 0.4),
     displayScale: 8,
     height: 0.6,

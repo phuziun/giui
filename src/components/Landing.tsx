@@ -545,6 +545,66 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
   );
 }
 
+// Bias-lighting behind the nav bar on non-home routes ("Hue lights behind a
+// TV"): a few HIDDEN emitters (`bodyAlpha: 0` → invisible source, NO picture on
+// the bar's face) drift slowly BEHIND the opaque bar. They radiate coloured
+// light that the bar occludes, so it spills AROUND the bar and washes the area —
+// it's real light behind the component, not a picture projected onto it (which
+// is what the SCREEN approach did, and the owner rejected). Warm-cool hue family
+// (reflected → no magenta), slowly cycling.
+// Blobs live at the bar's PERIMETER (top/bottom margins), not centred behind its
+// face — with this GI's low occlusion a component can't fully block light, so
+// perimeter emitters wash the AREA AROUND the bar (a halo) while the face stays
+// comparatively dark, reading as bias light rather than blobs on the bar.
+const NAV_BLOBS = [
+  { left: 14, top: 2, size: 84, cls: "gi-nav-a" },
+  { left: 40, top: 100, size: 78, cls: "gi-nav-b" },
+  { left: 60, top: 0, size: 86, cls: "gi-nav-c" },
+  { left: 86, top: 100, size: 76, cls: "gi-nav-a" },
+  { left: 98, top: 48, size: 72, cls: "gi-nav-b" },
+];
+
+function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; cls: string; left: number; top: number }) {
+  const ref = useGIShape({
+    kind: "circle",
+    albedo: color,
+    // Subtle: rawGlow bypasses the 0.05 componentGlow master, so keep emission
+    // low — this is an ambient wash around the bar, not a floodlight.
+    emission: scale(color, 0.11),
+    opacity: 0.5, // radiates into the GI (emitters need opacity to cast light)
+    bodyAlpha: 0, // hidden — no visible body/display, only the light it casts
+    rawGlow: true,
+    live: true, // tracks the CSS drift
+  });
+  return (
+    <div className={cls} style={{ position: "absolute", left: `${left}%`, top: `${top}%`, width: size, height: size, marginTop: -size / 2, marginLeft: -size / 2 }}>
+      <div ref={ref as React.RefObject<HTMLDivElement>} style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+    </div>
+  );
+}
+
+export function NavGlow() {
+  const [hue, setHue] = useState(120);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setInterval(() => setHue((h) => (h + 0.6) % 360), 120);
+    return () => window.clearInterval(t);
+  }, []);
+  const win = hue / 360; // slides along the arc
+  return (
+    <div style={{ position: "absolute", inset: -24, pointerEvents: "none" }} aria-hidden>
+      {NAV_BLOBS.map((b, i) => {
+        // narrow warm-cool family around the sliding window, reflected → no magenta
+        let pr = win + (i / NAV_BLOBS.length - 0.5) * 0.44;
+        pr = ((pr % 2) + 2) % 2;
+        if (pr > 1) pr = 2 - pr;
+        const color = hslToLinear(220 - pr * 215, 0.8, 0.5);
+        return <NavBlob key={i} color={color} size={b.size} cls={b.cls} left={b.left} top={b.top} />;
+      })}
+    </div>
+  );
+}
+
 export function Landing() {
   const { accent } = useGITheme();
   return (
@@ -580,32 +640,6 @@ export function Landing() {
         <GIStat label="Render passes" value="4" delta="GPU" width={170} />
         <GIStat label="Idle GPU cost" value="0" delta="by design" width={170} />
       </section>
-
-      {/* Footer: license + donate. Anchors self-enable pointer events because
-          .layout is click-through (gotcha #4). */}
-      <footer style={{ textAlign: "center", fontSize: 12, lineHeight: 1.7, color: "rgba(150,160,182,0.5)", margin: "8px 0 4px" }}>
-        Free for individuals and small teams under the{" "}
-        <a
-          href="https://polyformproject.org/licenses/small-business/1.0.0"
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "rgba(150,160,182,0.75)", pointerEvents: "auto" }}
-        >
-          PolyForm Small Business license
-        </a>
-        {" "}— larger companies, get in touch.
-        <br />
-        If giui lights up your project,{" "}
-        <a
-          href="https://davehale.net/donate"
-          target="_blank"
-          rel="noreferrer"
-          style={{ color: "rgba(150,160,182,0.75)", pointerEvents: "auto" }}
-        >
-          consider donating
-        </a>
-        . © Dave Hale
-      </footer>
     </div>
   );
 }

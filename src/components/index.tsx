@@ -320,7 +320,9 @@ export function GISlider({
   });
   // The *filled* portion (left edge -> knob) is the bright accent surface, with
   // a glow on top. Only this part lights up, so it reads as a fill to the knob.
-  const fillEmit = accent ? 0.8 : 0;
+  // The glow scales ±30% with the value: dim at minimum (0.7×), full at the
+  // middle, bright at maximum (1.3×) — so dragging visibly brightens it.
+  const fillEmit = (accent ? 0.8 : 0) * (0.7 + 0.6 * val);
   const fillRef = useGIShape({
     height: -0.3,
     bevel: 3,

@@ -135,6 +135,17 @@ html {
   animation: gi-lava-rise 9s ease-in-out infinite alternate -3s;
 }
 
+/* Nav backlight blobs (hidden emitters) drift slowly behind the bar. */
+@keyframes gi-nav-a { 0%, 100% { transform: translate(-30px, -5px); } 50% { transform: translate(30px, 6px); } }
+@keyframes gi-nav-b { 0%, 100% { transform: translate(26px, 6px); } 50% { transform: translate(-28px, -6px); } }
+@keyframes gi-nav-c { 0%, 100% { transform: translate(-18px, 7px); } 50% { transform: translate(24px, -6px); } }
+.gi-nav-a { animation: gi-nav-a 11s ease-in-out infinite; }
+.gi-nav-b { animation: gi-nav-b 9s ease-in-out infinite; }
+.gi-nav-c { animation: gi-nav-c 13s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .gi-nav-a, .gi-nav-b, .gi-nav-c { animation: none; }
+}
+
 @keyframes gi-breathe {
   from { transform: scaleX(1); }
   to { transform: scaleX(1.4); }
@@ -257,6 +268,13 @@ html {
   cursor: pointer;
   pointer-events: auto;
   user-select: none;
+}
+
+/* Off the home route the logo lights up over the nav backlight: bright glyphs
+   with a soft glow instead of the stamped/letterpress recess. */
+.wordmark.lit {
+  color: rgba(238, 244, 253, 0.98);
+  text-shadow: 0 0 14px rgba(120, 180, 255, 0.45);
 }
 
 .page-head h2 {

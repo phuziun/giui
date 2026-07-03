@@ -658,10 +658,23 @@ the same three recipes: carved well / raised chip / emissive accent):
   (`Studio` in App.tsx: controlled `GIField` + `GIButton`s + clickable `GITag` chips; the
   old fixed `PresetBar` + its CSS are gone). Includes a live **Preview** (crisp/raised vs
   soft/carved pair, emitters & controls board) so tuning has something to land on.
-- **Nav is the kit**: a raised `Surface` app bar with an emissive `LogoDot` and a
+- **Nav is the kit**: a raised `Surface` app bar with a `LogoDot` and a
   **controlled `GISegmented`** as the route switcher (`index`/`onChange` added to both
   GISegmented and GITabs). `GIToggle` gained `defaultOn`; `GIField` gained controlled
   `value`/`onChange`; `GITag` gained `onClick`.
+  - **NAV BACKLIGHT (owner: "Hue lights behind a TV")** on non-home routes:
+    `NavGlow` (Landing.tsx) drifts ~5 HIDDEN emitters (`bodyAlpha:0`, no
+    display/body) at the bar's PERIMETER (top/bottom margins), radiating a
+    warm-cool halo AROUND the bar; the logo lights up (`LogoDot lit` → emissive
+    dot, `.wordmark.lit` → bright + glow) and the bar's `opacity` goes 0.55→0.9.
+    ⚠ Two dead ends: (1) a SCREEN (display>0) projected the fluid ONTO the bar's
+    face — rejected. (2) hidden emitters CENTRED behind the bar still glowed on
+    the face because this GI's component occlusion is low (`occlusion` 0.2 —
+    light spreads across surfaces, so a component can't act as an opaque "TV"
+    blocking light behind it). Perimeter placement + low emission (`scale 0.11`,
+    rawGlow bypasses the 0.05 componentGlow master so keep it TINY) is what reads
+    as bias light. On home the nav is unchanged (stamped `LogoDot` dimple, no
+    glow) since FluidHero owns the one screen slot there.
 - **Site structure**: a tiny hash router in `App.tsx` (`#/`, `#/components`, `#/templates`;
   `parseRoute`/`ROUTES`) with a `.topnav` (wordmark + **controlled `GITabs`** — `index`/
   `onChange` props added for exactly this). Routes: **Landing** (`src/components/Landing.tsx`

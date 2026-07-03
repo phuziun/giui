@@ -23,7 +23,7 @@ import { useGIShape } from "./gi/useGIShape";
 import { useGITheme } from "./gi/GIProvider";
 import { Zoo } from "./components/Zoo";
 import { Templates } from "./components/Templates";
-import { Landing } from "./components/Landing";
+import { Landing, NavGlow } from "./components/Landing";
 
 type Vec3 = [number, number, number];
 
@@ -382,19 +382,31 @@ function Studio({
 
 const ROUTES = ["home", "components", "templates", "studio"];
 
-// The wordmark's dot — stamped into the bar like the wordmark itself: a real
-// carved dimple in the GI scene (was a glowing emitter), holding a faint
-// accent tint in its recess.
-function LogoDot() {
+// The wordmark's dot. Off the home route (`lit`) it becomes a glowing accent
+// emitter — the logo lights up over the nav backlight. On home it's a real
+// carved dimple stamped into the bar, holding a faint accent tint in its recess.
+function LogoDot({ lit = false }: { lit?: boolean }) {
   const { accent } = useGITheme();
-  const ref = useGIShape({
-    kind: "circle",
-    albedo: [accent[0] * 0.14, accent[1] * 0.14, accent[2] * 0.14],
-    tint: 1,
-    height: -0.6,
-    bevel: 2.5,
-    heightScale: 2.5,
-  });
+  const ref = useGIShape(
+    lit
+      ? {
+          kind: "circle",
+          albedo: accent,
+          tint: 1,
+          emission: [accent[0] * 0.85, accent[1] * 0.85, accent[2] * 0.85],
+          displayScale: 6,
+          height: 0.4,
+          bevel: 3,
+        }
+      : {
+          kind: "circle",
+          albedo: [accent[0] * 0.14, accent[1] * 0.14, accent[2] * 0.14],
+          tint: 1,
+          height: -0.6,
+          bevel: 2.5,
+          heightScale: 2.5,
+        }
+  );
   return (
     <span
       ref={ref as React.RefObject<HTMLSpanElement>}
@@ -453,21 +465,27 @@ export default function App() {
         showPerf={(v.showPerf as boolean) && route === "studio"}
       >
         <div className="layout">
-          {/* The nav is built from the kit itself: a raised lit bar, an
-              emissive logo dot, and the segmented control's glowing thumb
-              as the route indicator. */}
-          <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2}>
-            <span className="wordmark" onClick={() => nav("home")}>
-              giui
-              <LogoDot />
-            </span>
-            <GISegmented
-              options={["Home", "Components", "Templates", "Studio"]}
-              index={ROUTES.indexOf(route)}
-              onChange={(i) => nav(ROUTES[i])}
-              width={410}
-            />
-          </Surface>
+          {/* The nav is built from the kit itself: a raised lit bar and the
+              segmented control's glowing thumb as the route indicator. Off the
+              home route, a lava-lamp SCREEN backlights the bar (light spilling
+              around it) and the logo lights up. */}
+          <div style={{ position: "relative" }}>
+            {route !== "home" && <NavGlow />}
+            {/* Off home the bar is more opaque so it occludes the backlight like
+                a solid TV — the hue light spills AROUND it, not through it. */}
+            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.9}>
+              <span className={route === "home" ? "wordmark" : "wordmark lit"} onClick={() => nav("home")}>
+                giui
+                <LogoDot lit={route !== "home"} />
+              </span>
+              <GISegmented
+                options={["Home", "Components", "Templates", "Studio"]}
+                index={ROUTES.indexOf(route)}
+                onChange={(i) => nav(ROUTES[i])}
+                width={410}
+              />
+            </Surface>
+          </div>
 
           {route === "home" && <Landing />}
 

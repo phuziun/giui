@@ -230,8 +230,11 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
   // the screen still read a little high at 0.48). topFade thins the emitted
   // light toward the band's top edge so the nav above isn't flooded — the
   // visible picture is unaffected.
-  // emit 0.35 → 0.21 (owner: reduce the screen's GI contribution by 40%).
-  const screenRef = useGIScreen(out, { emit: 0.21, display: 3.2, topFade: 0.7, topFadeH: 0.45 });
+  // emit 0.35 → 0.21 (owner: reduce the screen's GI *spill onto the page* 40%).
+  // display 3.2 → 3.7 (owner: the screen itself a touch brighter as the light
+  // pools pass over it) — display is the visible-picture brightness, decoupled
+  // from emit, so this brightens the screen without adding GI spill.
+  const screenRef = useGIScreen(out, { emit: 0.21, display: 3.7, topFade: 0.7, topFadeH: 0.45 });
 
   // Paint the fluid source (~30Hz): faded trails + blurred additive gradients.
   useEffect(() => {

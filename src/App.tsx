@@ -414,6 +414,37 @@ function LogoDot({ lit = false }: { lit?: boolean }) {
     />
   );
 }
+// The lit wordmark (off the home route): each letter of "giui" gets its own
+// colour from the warm-cool arc (no magenta), the colours slowly cycling — so
+// the logo reads as multi-coloured alternating light, matching the nav backlight.
+function LitWordmark({ onClick }: { onClick: () => void }) {
+  const [hue, setHue] = useState(150);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setInterval(() => setHue((h) => (h + 0.7) % 360), 130);
+    return () => window.clearInterval(t);
+  }, []);
+  // hue param → arc 220°(blue)…5°(red), reflected so it never lands on magenta.
+  const arc = (deg: number) => {
+    let p = (((deg % 360) + 360) % 360) / 180; // 0..2
+    if (p > 1) p = 2 - p;
+    return Math.round(220 - p * 215);
+  };
+  return (
+    <span className="wordmark lit" onClick={onClick}>
+      {"giui".split("").map((c, i) => {
+        const h = arc(hue + i * 52); // each letter a distinct, alternating hue
+        return (
+          <span key={i} style={{ color: `hsl(${h}, 85%, 66%)`, textShadow: `0 0 14px hsla(${h}, 90%, 60%, 0.5)` }}>
+            {c}
+          </span>
+        );
+      })}
+      <LogoDot lit />
+    </span>
+  );
+}
+
 function parseRoute(hash: string): string {
   const r = hash.replace(/^#\/?/, "");
   return ROUTES.includes(r) ? r : "home";
@@ -473,11 +504,15 @@ export default function App() {
             {route !== "home" && <NavGlow />}
             {/* Off home the bar is more opaque so it occludes the backlight like
                 a solid TV — the hue light spills AROUND it, not through it. */}
-            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.9}>
-              <span className={route === "home" ? "wordmark" : "wordmark lit"} onClick={() => nav("home")}>
-                giui
-                <LogoDot lit={route !== "home"} />
-              </span>
+            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.95}>
+              {route === "home" ? (
+                <span className="wordmark" onClick={() => nav("home")}>
+                  giui
+                  <LogoDot />
+                </span>
+              ) : (
+                <LitWordmark onClick={() => nav("home")} />
+              )}
               <GISegmented
                 options={["Home", "Components", "Templates", "Studio"]}
                 index={ROUTES.indexOf(route)}

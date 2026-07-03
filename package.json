@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "license": "PolyForm-Small-Business-1.0.0",
-  "author": "Dave Hale (https://davehale.net/giui)",
+  "author": "Dave Hale (https://github.com/phuziun/giui)",
+  "homepage": "https://phuziun.github.io/giui/",
+  "repository": { "type": "git", "url": "https://github.com/phuziun/giui.git" },
   "funding": "https://davehale.net/donate",
   "type": "module",
   "scripts": {

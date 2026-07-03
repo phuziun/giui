@@ -1,4 +1,4 @@
-Required Notice: Copyright Dave Hale (https://davehale.net/giui)
+Required Notice: Copyright Dave Hale (https://github.com/phuziun/giui)
 
 # PolyForm Small Business License 1.0.0
 

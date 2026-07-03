@@ -147,6 +147,6 @@ free to use, modify, and distribute for individuals and companies with fewer tha
 100 people and under $1M revenue. Larger companies need a commercial license —
 contact the author.
 
-Required Notice: Copyright Dave Hale (https://davehale.net/giui)
+Required Notice: Copyright Dave Hale (https://github.com/phuziun/giui)
 
 If giui is useful to you, consider [donating](https://davehale.net/donate). ♥

@@ -833,6 +833,43 @@ An audit + fixes so an adopting engineer doesn't hit sharp edges:
   raw-loader config. Audit rated everything else (cleanup, listeners, graceful
   no-WebGPU path) solid.
 
+## Session 2026-07-04 (later): docs site, motivated backlight, nav rename
+
+- **Docs route** (`#/docs/<slug>`, in the nav): MUI-style reference built from
+  the kit itself — `src/components/docs/` (Docs.tsx sidebar+page shell,
+  CodeBlock.tsx dependency-free regex TSX highlighter + copy button,
+  `entries/` data split by group). ~30 pages cover all 41 components plus
+  Getting started / Custom shapes / Studio guides; every example is a LIVE
+  demo in the real light field with its copyable source string beside the JSX
+  (keep code strings in sync when APIs change). Hash router now supports
+  sub-paths (`parseRoute` keeps the full path; App splits page/sub). Sidebar
+  is plain DOM links (shape-budget), demos get pointer-events via
+  `.docs-demo > *`.
+- **Nav is now Home / Examples / Components / Docs / Studio** — Templates
+  renamed to Examples (`#/templates` redirects in parseRoute).
+- **"Motivated" nav backlight (owner)**: sequence of owner asks — halve the
+  bar's GI spill (blob emission 0.042→0.021), then "brighter VISIBLE light
+  behind the bar". Resolution decouples the two:
+  (1) matte apron now REVEALS background GI — composite
+  `bgGI = mix(giBackground, 0.5, matteSoft) * (1 - matteHard)` — the
+  backplate right behind the bar shows up to 0.5 GI vs the 0.14 global cap,
+  fading back across the soft zone (the wall behind a backlit TV is the
+  brightest spot); face+lip stay dark via matteHard; scene hard-exit ramp
+  widened 2→5px so the escaping rim ignites gently.
+  (2) NavGlow blobs smaller+hotter (96px@0.021 → 76px@0.031): near-field
+  surface brightness ~2× while total flux (area×emission) stays at the halved
+  level — far spill unchanged. The old "small bright blobs = hard rim"
+  rejection no longer applies because the penumbra smooths it.
+  (3) **LitWordmark letters are now real emitters** (`LitLetter` in App.tsx:
+  hidden circle per letter, `hslToLinear(h,.85,.55)×0.5`, opacity 0.35,
+  rawGlow; hslToLinear is exported from Landing.tsx) + stronger text-shadow —
+  owner asked for "a touch more glow/GI from the giui text".
+- **Adoption fixes recap** (details in the section below): beacon stops on
+  first non-ok POST, StrictMode device leak fixed, device-loss auto-recovery
+  (`gen` state re-runs init), `onError` prop, non-blocking corner error chip,
+  kit CSS moved to `src/components/components.css` (imported by the kit),
+  leva → devDependencies, README rewritten MUI-style.
+
 ## Current state (where this session ended — updated 2026-07-04)
 
 **The project goal** (user's words): a dark neumorphic component framework that "just

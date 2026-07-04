@@ -68,10 +68,15 @@ export function useGIScreen(
 export function GICanvas({
   params = DEFAULT_PARAMS,
   showPerf = false,
+  onError,
   children,
 }: {
   params?: GIParams;
   showPerf?: boolean;
+  /** Called when the lighting layer fails (no WebGPU, repeated device loss).
+   *  The DOM UI keeps working unlit either way; this is for consumers who want
+   *  to log it or show their own notice instead of the built-in corner chip. */
+  onError?: (message: string) => void;
   children: ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -80,6 +85,13 @@ export function GICanvas({
   const sceneRef = useRef(new Scene());
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  // Bumped to re-run the whole init effect after an unexpected GPU device loss
+  // (driver reset, GPU switch on a dual-GPU laptop, TDR): the scene survives in
+  // React state, so re-init restores lighting without losing any UI state.
+  const [gen, setGen] = useState(0);
+  const lostInfo = useRef({ count: 0, at: 0 });
 
   // Drives on-demand rendering: passes only run on a frame where this is set.
   // needsRender = a shape changed (may be skippable if off-screen);
@@ -118,12 +130,14 @@ export function GICanvas({
     const canvas = canvasRef.current!;
     const root = rootRef.current!;
     let renderer: Renderer | null = null;
+    let gpuDevice: GPUDevice | null = null;
     let raf = 0;
     let disposed = false;
     let onScrollHandler: (() => void) | null = null;
     let onInteractHandler: (() => void) | null = null;
     let gpuLabel = "";
     let beaconTimer = 0;
+    let beaconKick = 0;
 
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -159,10 +173,35 @@ export function GICanvas({
         resize();
         const tInit = performance.now();
         const ctx = await initWebGPU(canvas);
-        if (disposed) return;
+        // StrictMode aborts the first mount mid-init: the cleanup below already
+        // ran (renderer/gpuDevice were still null), so the freshly acquired
+        // device must be destroyed HERE or it leaks one device per dev mount.
+        if (disposed) { ctx.device.destroy(); return; }
+        gpuDevice = ctx.device;
+        // Unexpected device loss (driver reset, dual-GPU switch, TDR — NOT our
+        // own destroy()): re-run this effect for a fresh device + pipelines.
+        // The scene lives in React state, so lighting comes back where it was.
+        // A device that keeps dying (>3 losses within 30s of each other) stops
+        // retrying and surfaces the error; the DOM UI stays usable unlit.
+        ctx.device.lost.then((info) => {
+          if (disposed || info.reason === "destroyed") return;
+          const now = Date.now();
+          if (now - lostInfo.current.at > 30000) lostInfo.current.count = 0;
+          lostInfo.current.at = now;
+          if (++lostInfo.current.count <= 3) {
+            console.warn(`[giui] GPU device lost (${info.message || "unknown"}) — reinitializing.`);
+            setGen((g) => g + 1);
+          } else {
+            const msg = "GPU device repeatedly lost — lighting disabled (the UI still works unlit). Reload to retry.";
+            console.error(`[giui] ${msg}`);
+            setError(msg);
+            setStatus("error");
+            onErrorRef.current?.(msg);
+          }
+        });
         const tDevice = performance.now();
         renderer = await Renderer.create(ctx); // async pipeline compile — no main-thread freeze
-        if (disposed) return;
+        if (disposed) { renderer.destroy(); ctx.device.destroy(); return; }
         (window as unknown as {
           __giInit?: { deviceMs: number; pipelineMs: number; gpu: string; software: boolean };
         }).__giInit = {
@@ -266,10 +305,19 @@ export function GICanvas({
                 hz: Math.round(1000 / vsyncEst),
                 ambient: performance.now() - lastInteraction > 1500,
               }),
-            }).catch(() => {});
+            })
+              .then((res) => {
+                // Only THIS repo's dev server has the diagSink middleware. A
+                // consumer who vendors the source and runs their own `vite dev`
+                // answers 404 — stop after the first miss so their network tab
+                // isn't spammed with a POST every 4s (which reads as the
+                // library phoning home).
+                if (!res.ok) window.clearInterval(beaconTimer);
+              })
+              .catch(() => window.clearInterval(beaconTimer));
           };
           beaconTimer = window.setInterval(send, 4000);
-          setTimeout(send, 1500);
+          beaconKick = window.setTimeout(send, 1500);
         }
         let lastLoop = 0;
         let lastHud = 0;
@@ -514,8 +562,10 @@ export function GICanvas({
         };
         raf = requestAnimationFrame(loop);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
         setStatus("error");
+        onErrorRef.current?.(msg);
       }
     })();
 
@@ -527,16 +577,22 @@ export function GICanvas({
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer?.destroy();
+      // Deterministic teardown (and the device.lost handler sees "destroyed"
+      // and stays quiet). In-flight init paths destroy their own device via
+      // the `disposed` checks — this handle is still null there.
+      gpuDevice?.destroy();
       if (onScrollHandler) window.removeEventListener("scroll", onScrollHandler, true);
       window.removeEventListener("resize", resize);
       if (beaconTimer) window.clearInterval(beaconTimer);
+      if (beaconKick) window.clearTimeout(beaconKick);
       if (onInteractHandler) {
         for (const ev of ["pointermove", "pointerdown", "wheel", "keydown"]) {
           window.removeEventListener(ev, onInteractHandler);
         }
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- gen re-runs init after device loss
+  }, [gen]);
 
   return (
     <GIContext.Provider value={{ rootRef, setShape, setScreen, componentGlow: params.componentGlow }}>
@@ -609,10 +665,30 @@ export function GICanvas({
             }}
           />
         )}
+        {/* Compact, non-blocking notice: the DOM UI stays fully usable (just
+            unlit), so a full-page veil here would break exactly the graceful
+            degradation it reports. Inline-styled so it needs no app CSS. */}
         {status === "error" && (
-          <div className="gi-error">
-            <strong>WebGPU unavailable</strong>
-            <p>{error}</p>
+          <div
+            role="status"
+            style={{
+              position: "fixed",
+              left: 12,
+              bottom: 12,
+              zIndex: 200,
+              maxWidth: 340,
+              padding: "10px 14px",
+              borderRadius: 8,
+              fontSize: 12.5,
+              lineHeight: 1.45,
+              color: "rgba(255, 226, 226, 0.92)",
+              background: "rgba(24, 10, 12, 0.88)",
+              border: "1px solid rgba(255, 120, 120, 0.25)",
+              pointerEvents: "none",
+            }}
+          >
+            <strong style={{ display: "block", fontSize: 13 }}>Lighting disabled</strong>
+            {error}
           </div>
         )}
       </div>

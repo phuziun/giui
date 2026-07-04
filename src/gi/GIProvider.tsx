@@ -59,12 +59,16 @@ export function GIProvider({
   quality,
   params,
   showPerf = false,
+  onError,
   children,
 }: {
   theme?: Partial<GITheme>;
   quality?: GIQuality;
   params?: Partial<GIParams>;
   showPerf?: boolean;
+  /** Lighting-layer failure callback (no WebGPU, repeated GPU device loss).
+   *  The UI keeps working unlit; use this to log or show your own notice. */
+  onError?: (message: string) => void;
   children: ReactNode;
 }) {
   const mergedTheme = useMemo<GITheme>(() => ({ ...DEFAULT_THEME, ...theme }), [theme]);
@@ -78,7 +82,7 @@ export function GIProvider({
   );
   return (
     <ThemeContext.Provider value={mergedTheme}>
-      <GICanvas params={mergedParams} showPerf={showPerf}>
+      <GICanvas params={mergedParams} showPerf={showPerf} onError={onError}>
         {children}
       </GICanvas>
     </ThemeContext.Provider>

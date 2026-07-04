@@ -341,28 +341,6 @@ html {
   gap: 16px;
 }
 
-.gi-error {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 32px;
-  color: rgba(255, 230, 230, 0.9);
-  background: rgba(20, 6, 8, 0.7);
-}
-
-.gi-error strong {
-  font-size: 20px;
-}
-
-.gi-error p {
-  max-width: 460px;
-  color: rgba(230, 200, 200, 0.7);
-}
-
 @media (max-width: 720px) {
   .grid {
     grid-template-columns: 1fr;

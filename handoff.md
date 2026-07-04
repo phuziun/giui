@@ -864,6 +864,16 @@ An audit + fixes so an adopting engineer doesn't hit sharp edges:
   hidden circle per letter, `hslToLinear(h,.85,.55)×0.5`, opacity 0.35,
   rawGlow; hslToLinear is exported from Landing.tsx) + stronger text-shadow —
   owner asked for "a touch more glow/GI from the giui text".
+- **Hero screen is responsive (owner: "we squish the giui screen on mobile")**:
+  the wordmark mask in FluidHero is ASPECT-COMPENSATED — pre-scaled
+  horizontally by (texture aspect 4:1 / band aspect), uniformly shrunk if the
+  widened word wouldn't fit, rebuilt on window resize (`buildMask`) — so the
+  letters keep their true ratio at any viewport. Band height is now
+  `clamp(200px, 33vw, 430px)` (spacer div; `.fluid-hero` min-height removed):
+  phones get a ~200px strip, desktop ≥1300px unchanged at 430.
+  ⚠ Known mobile gap (NOT fixed): the nav `GISegmented` is fixed 480px wide
+  and clips on phones ("Studio" cut off at 390px) — really wants the app-shell
+  drawer pattern from the roadmap, not a width hack.
 - **Adoption fixes recap** (details in the section below): beacon stops on
   first non-ok POST, StrictMode device leak fixed, device-loss auto-recovery
   (`gen` state re-runs init), `onError` prop, non-blocking corner error chip,

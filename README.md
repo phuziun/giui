@@ -8,7 +8,8 @@ cast and spread light onto their neighbours, and beveled edges shade themselves
 from the resolved radiance field.
 
 **Live demo: <https://phuziun.github.io/giui/>** — drag the lights, flip the
-toggles, and open the Studio route to tune the lighting live.
+toggles, and open the Studio route to tune the lighting live. **Per-component
+documentation with live examples is on the site's Docs tab.**
 
 ---
 

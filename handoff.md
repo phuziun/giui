@@ -969,3 +969,45 @@ it. Tip: to diagnose relief, set `seed("debugMode", 2)` in App.tsx (the seed lit
 ## README
 `README.md` has a user-facing version of the pipeline, component API, and the full leva
 param list — keep it in sync when you add params.
+
+## Roadmap sprint (2026-07-04, owner: "knock out everything else in the roadmap")
+
+All agreed roadmap items are DONE (each verified headlessly + committed separately):
+- **Snackbar queue**: `<GIToaster/>` (mount once) + imperative `toast()`
+  (string shorthand; queue, auto-dismiss, click-dismiss, `live` cards so the
+  light follows the slide). Studio Save/Copy fire real toasts.
+- **Keyboard nav**: GISelect trigger is focusable role=combobox (Enter/Space/
+  arrows open, arrows/Home/End move a glowing `highlighted` GIMenuRow, Enter
+  picks, Esc/Tab closes); GICombobox highlights the first match (Enter picks
+  from typing).
+- **App shell**: `GIAppBar` (leading/title/trailing, optional matte),
+  `GINavRail` (vertical accent-chip nav, `collapsed` icon mode), `GIDrawer`
+  (controlled slide-in, Esc/outside close, layer-2 + hole-punch dim, live
+  shape). Examples page gains a "Console" mock; docs gain an App shell group.
+  NB: the mobile-nav gap (fixed-width GISegmented clipping at 390px) can now
+  be fixed with GIDrawer — natural next step.
+- **Glow tweens**: `useGIShape({ tween: ms })` eases EMISSION changes
+  (exponential, rAF loop alive only during the transition; first mount snaps;
+  re-entrancy-guarded). Applied: GIButton 150ms, field family 180ms. Per-
+  instance `glow`/`displayScale` props on GIButton, `glow` on GIField.
+- **Packaging**: `npm run build:lib` → dist-lib (ES, React external, WGSL
+  inlined, d.ts via tsconfig.lib.json, style.css). package.json has exports/
+  types/files/sideEffects/peerDeps; still `private:true` (publish + name =
+  owner's call). VERIFIED with a real consumer app installing the packed
+  tarball (typechecks, builds, renders lit). Root div now defaults
+  minHeight:100vh + #1e222b background (consumer pages without a height
+  chain/dark body rendered white-on-white before).
+- **quality="auto"** (+`onGPUInfo` on provider/canvas): medium, drops to low
+  on a software rasterizer once adapter info arrives.
+- **Video-as-light**: Studio "Hero source" card — pick a local video (object
+  URL, no canvas taint) → FluidHero draws frames into `src` (cover-fit, full
+  overwrite so the RGB split can't compound) instead of the fluid sim;
+  wordmark/hum/CRT/GI all read the same frames. "Fluid sim" switches back.
+  `Landing`/`FluidHero` take a `heroVideo`/`video` prop; state lives in App.
+- Also this sprint: **Debug views** Height/Shadow/AO/Occlusion (composite
+  debugMode 5-8; leva options updated — Occlusion also reveals hidden
+  emitters).
+
+NOT done (deliberate): time-driven film grain (breaks zero-idle-GPU by
+design), dirty-rect band narrowing (perf headroom not needed), owner-decision
+items (npm publish/name, sponsors, custom domain, real-name question).

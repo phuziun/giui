@@ -23,7 +23,7 @@ import { useGIShape } from "./gi/useGIShape";
 import { useGITheme } from "./gi/GIProvider";
 import { Zoo } from "./components/Zoo";
 import { Templates } from "./components/Templates";
-import { Landing, NavGlow } from "./components/Landing";
+import { Landing, NavGlow, hslToLinear } from "./components/Landing";
 import { Docs } from "./components/docs/Docs";
 
 type Vec3 = [number, number, number];
@@ -415,6 +415,31 @@ function LogoDot({ lit = false }: { lit?: boolean }) {
     />
   );
 }
+// One wordmark letter: coloured DOM text + a hidden emitter in the same hue,
+// so the letters genuinely pour a little of their light into the scene (the
+// matte bar doesn't receive it, but it spills past the bar's edge and onto
+// the page around the logo — the letters read as real light sources).
+function LitLetter({ c, h }: { c: string; h: number }) {
+  const ref = useGIShape({
+    kind: "circle",
+    emission: (() => {
+      const lin = hslToLinear(h, 0.85, 0.55);
+      return [lin[0] * 0.5, lin[1] * 0.5, lin[2] * 0.5] as Vec3;
+    })(),
+    opacity: 0.35, // emitters need opacity to cast into the GI
+    bodyAlpha: 0, // hidden — the DOM glyph is the visible body
+    rawGlow: true,
+  });
+  return (
+    <span
+      ref={ref as React.RefObject<HTMLSpanElement>}
+      style={{ display: "inline-block", color: `hsl(${h}, 85%, 66%)`, textShadow: `0 0 16px hsla(${h}, 90%, 60%, 0.7)` }}
+    >
+      {c}
+    </span>
+  );
+}
+
 // The lit wordmark (off the home route): each letter of "giui" gets its own
 // colour from the warm-cool arc (no magenta), the colours slowly cycling — so
 // the logo reads as multi-coloured alternating light, matching the nav backlight.
@@ -433,14 +458,9 @@ function LitWordmark({ onClick }: { onClick: () => void }) {
   };
   return (
     <span className="wordmark lit" onClick={onClick}>
-      {"giui".split("").map((c, i) => {
-        const h = arc(hue + i * 52); // each letter a distinct, alternating hue
-        return (
-          <span key={i} style={{ color: `hsl(${h}, 85%, 66%)`, textShadow: `0 0 14px hsla(${h}, 90%, 60%, 0.5)` }}>
-            {c}
-          </span>
-        );
-      })}
+      {"giui".split("").map((c, i) => (
+        <LitLetter key={i} c={c} h={arc(hue + i * 52)} />
+      ))}
       <LogoDot lit />
     </span>
   );

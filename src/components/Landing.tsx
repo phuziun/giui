@@ -10,7 +10,8 @@ type Vec3 = [number, number, number];
 const scale = (v: Vec3, k: number): Vec3 => [v[0] * k, v[1] * k, v[2] * k];
 
 // HSL -> (approx) linear RGB, for the lava lamp's slow hue cycling.
-function hslToLinear(h: number, s: number, l: number): Vec3 {
+// Exported: the nav's LitWordmark letter emitters reuse it (App.tsx).
+export function hslToLinear(h: number, s: number, l: number): Vec3 {
   const a = s * Math.min(l, 1 - l);
   const f = (n: number) => {
     const k = (n + h / 30) % 12;
@@ -565,13 +566,20 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
 // soft ones spread a gentle field, so the light bleeds out as a SOFT INDIRECT
 // wash on the surroundings with no sharp edge. The bar is `matte` (receives no
 // GI — see Surface), so nothing lands on its face.
+// SMALLER + HOTTER than the first pass (96px @ 0.021): near-field brightness
+// scales with emission (surface brightness) while far-field spill scales with
+// total flux (emission × area) — so shrinking the blobs and raising emission
+// keeps the page-wide GI at the owner's halved level while the visible glow
+// AT the bar roughly doubles ("motivated" lighting: you can see the source).
+// The old small-bright-rim harshness this risks is now handled by the matte
+// penumbra in the composite.
 const NAV_BLOBS = [
-  { left: 8, top: 50, size: 96, cls: "gi-nav-a" },
-  { left: 24, top: 50, size: 90, cls: "gi-nav-b" },
-  { left: 40, top: 50, size: 96, cls: "gi-nav-c" },
-  { left: 56, top: 50, size: 90, cls: "gi-nav-a" },
-  { left: 72, top: 50, size: 96, cls: "gi-nav-b" },
-  { left: 88, top: 50, size: 90, cls: "gi-nav-c" },
+  { left: 8, top: 50, size: 76, cls: "gi-nav-a" },
+  { left: 24, top: 50, size: 72, cls: "gi-nav-b" },
+  { left: 40, top: 50, size: 76, cls: "gi-nav-c" },
+  { left: 56, top: 50, size: 72, cls: "gi-nav-a" },
+  { left: 72, top: 50, size: 76, cls: "gi-nav-b" },
+  { left: 88, top: 50, size: 72, cls: "gi-nav-c" },
 ];
 
 function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; cls: string; left: number; top: number }) {
@@ -580,9 +588,10 @@ function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; c
     albedo: color,
     // Subtle: rawGlow bypasses the 0.05 componentGlow master, so keep emission
     // low — this is an ambient wash around the bar, not a floodlight.
-    // 0.042 → 0.021 (owner 2026-07-04: "reduce the GI contribution by half
-    // from the titlebar").
-    emission: scale(color, 0.021),
+    // History: 0.042 → 0.021 (owner: "halve the GI contribution from the
+    // titlebar") → 0.031 with blobs shrunk 96→76 (owner: "brighter visible
+    // light"). 0.031 × (76/96)² area ≈ the halved total flux, hotter surface.
+    emission: scale(color, 0.031),
     opacity: 0.5, // radiates into the GI (emitters need opacity to cast light)
     bodyAlpha: 0, // hidden — no visible body/display, only the light it casts
     rawGlow: true,

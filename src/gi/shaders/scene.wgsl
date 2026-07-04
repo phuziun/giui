@@ -183,7 +183,10 @@ fn sceneMaterial(p : vec2<f32>) -> Material {
       // composite.wgsl; non-matte tint stays >= 0 and decodes to zeros).
       // The apron fits the AABB pad (bevel + edgeAA + 1.5) exactly.
       let lip = s.params.w * 0.5 * (1.0 - G.edgeBias) + G.edgeAA;
-      let hard = 1.0 - smoothstep(lip, lip + 2.0, d);
+      // 5px exit: the hard→soft handoff is where the escaping-light rim
+      // ignites (composite passes 50% background GI in the soft zone), so a
+      // slightly wider ramp keeps that ignition gentle.
+      let hard = 1.0 - smoothstep(lip, lip + 5.0, d);
       // Penumbra width ~0.45 bevel (min 8px): wide enough to read soft, narrow
       // enough that the halo still visibly hugs the bar. Fits the AABB pad.
       let soft = 1.0 - smoothstep(lip, lip + max(s.params.w * 0.45, 8.0), d);

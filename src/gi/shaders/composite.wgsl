@@ -205,11 +205,17 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let hmask = smoothstep(0.0, 0.03, abs(nrm.w));
   let matteSoft = clamp(-dispS.a, 0.0, 1.0);
   let matteHard = clamp(-dispS.a - 1.0, 0.0, 1.0);
-  // Penumbra strength capped at 0.85: a whisper of background GI reaches the
-  // lip, so the halo still visibly hugs a matte bar AND the value is identical
-  // on both sides of the lip (no residual step) — the face's share is a
-  // negligible extra.z * 0.15.
-  let giMask = mix(L.extra.z * (1.0 - matteSoft * 0.85), 1.0, max(cover, hmask) * (1.0 - matteHard));
+  // The matte apron REVEALS the GI on the background instead of suppressing
+  // it: the backplate near a matte bar shows up to 50% of the gathered GI
+  // (vs the global giBackground cap, typ. 0.14, elsewhere), fading back to
+  // the cap across the soft zone. Physically read: the wall right behind a
+  // backlit panel is the brightest part of the halo — the light source is
+  // VISIBLE ("motivated"), while the far-field spill keeps the global cap.
+  // The face + bevel lip stay dark via matteHard; the 5px hard-exit ramp in
+  // the scene pass is where the escaping-light rim ignites, so every
+  // transition stays smooth (no return of the old harsh edge).
+  let bgGI = mix(L.extra.z, 0.5, matteSoft) * (1.0 - matteHard);
+  let giMask = mix(bgGI, 1.0, max(cover, hmask) * (1.0 - matteHard));
 
   // An emitter's own *visible* body shows its colour + display glow and should
   // not be re-lit by the bounce of its own emission, so suppress the GI there.

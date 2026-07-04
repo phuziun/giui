@@ -235,7 +235,8 @@ html {
   position: relative;
   width: 100vw;
   margin-left: calc(50% - 50vw);
-  min-height: 380px;
+  /* Height comes from the spacer inside (clamp on viewport width) so the
+     band stays a strip on phones — no fixed min-height. */
 }
 
 /* Analog finish for the hero screen — pure screenspace DOM over the lit

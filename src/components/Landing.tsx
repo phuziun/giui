@@ -255,16 +255,38 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
     const chromaB = mkScratch();
     const octx = out.getContext("2d", { willReadFrequently: true })!;
 
-    // Static letter coverage mask (alpha per pixel). The wordmark is a LIGHT
+    // Letter coverage mask (alpha per pixel). The wordmark is a LIGHT
     // AMPLIFIER: within these letters the underlying fluid is boosted; over
-    // darkness the letters simply don't exist. Rendered once.
+    // darkness the letters simply don't exist.
+    // ASPECT-COMPENSATED: the fixed W×H texture is stretched onto the band's
+    // CSS box, so a glyph drawn "straight" only looks right when the band's
+    // aspect matches the texture's (4:1). On a phone the band is ~2:1 and the
+    // letters squished to half width. Fix: pre-scale the text horizontally by
+    // (texture aspect / band aspect) — the display stretch then cancels it —
+    // and shrink uniformly if the widened word wouldn't fit. Rebuilt on
+    // resize (cheap: one 256×64 fillText + getImageData).
     const maskC = mkScratch();
-    maskC.font = "800 54px system-ui, -apple-system, 'Segoe UI', sans-serif";
     maskC.textAlign = "center";
     maskC.textBaseline = "middle";
     maskC.fillStyle = "#fff";
-    maskC.fillText("giui", W / 2, H / 2 + 3);
-    const mask = maskC.getImageData(0, 0, W, H).data;
+    let mask: Uint8ClampedArray;
+    const bandEl = screenRef.current;
+    const buildMask = () => {
+      const r = bandEl?.getBoundingClientRect();
+      const bandAspect = r && r.height > 4 && r.width > 4 ? r.width / r.height : W / H;
+      const k = Math.max(0.5, Math.min(4, W / H / bandAspect));
+      maskC.setTransform(1, 0, 0, 1, 0, 0);
+      maskC.clearRect(0, 0, W, H);
+      maskC.font = "800 54px system-ui, -apple-system, 'Segoe UI', sans-serif";
+      const base = maskC.measureText("giui").width;
+      const fit = Math.min(1, (W * 0.94) / (base * k)); // uniform shrink if too wide
+      maskC.setTransform(k * fit, 0, 0, fit, W / 2, H / 2 + 3);
+      maskC.fillText("giui", 0, 0);
+      maskC.setTransform(1, 0, 0, 1, 0, 0);
+      mask = maskC.getImageData(0, 0, W, H).data;
+    };
+    buildMask();
+    window.addEventListener("resize", buildMask);
 
     let scanPhase = 0;
     const rowGlow = new Array(H).fill(0);
@@ -484,7 +506,10 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
       if (!reduced) timer = window.setTimeout(frame, 33);
     };
     frame();
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", buildMask);
+    };
   }, [src, out]);
 
   return (
@@ -531,8 +556,11 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
         />
       </div>
       {/* Spacer only: the wordmark is painted into the source canvas (part of
-          the projection), so the band has no in-flow content of its own. */}
-      <div style={{ position: "relative", minHeight: 430 }}>{children}</div>
+          the projection), so the band has no in-flow content of its own.
+          Height tracks the viewport width so the band stays a wide STRIP on
+          phones instead of a squished square (the mask build compensates the
+          remaining aspect difference so the letters keep their true ratio). */}
+      <div style={{ position: "relative", height: "clamp(200px, 33vw, 430px)" }}>{children}</div>
       {/* Analog finish, pure screenspace DOM: organic scanlines + animated
           film grain (generated tiles) + corner vignette, plus the two dark
           hum bars rolling down (::before/::after). */}

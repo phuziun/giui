@@ -19,7 +19,12 @@ import {
   GIListItem,
   GITag,
   GIDatePicker,
+  GIAppBar,
+  GINavRail,
+  GIDrawer,
+  GIKbd,
 } from "./index";
+import { useState } from "react";
 
 type Vec3 = [number, number, number];
 const GOOD: Vec3 = [0.1, 0.7, 0.35];
@@ -234,12 +239,75 @@ function Inbox() {
   );
 }
 
+
+// --- App shell ----------------------------------------------------------------
+// The application frame: GIAppBar + GINavRail + content, with a GIDrawer for
+// secondary navigation. This is the skeleton a real product would hang its
+// pages on — all of it in the one light field.
+
+function AppShell() {
+  const [nav, setNav] = useState(0);
+  const [drawer, setDrawer] = useState(false);
+  const pages = ["Dashboard", "Reports", "Alerts", "Settings"];
+  return (
+    <Surface style={{ padding: 14, width: "100%" }} radius={9}>
+      <GIAppBar
+        leading={<GIButton onClick={() => setDrawer(true)}>≡</GIButton>}
+        title={`Console — ${pages[nav]}`}
+        trailing={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <GISearch placeholder="Search…" width={170} />
+            <GIAvatar initials="AD" size={34} status={GOOD} />
+          </div>
+        }
+      />
+      <div style={{ display: "flex", gap: 14, marginTop: 14, alignItems: "stretch" }}>
+        <GINavRail
+          items={[
+            { icon: "▦", label: "Dashboard" },
+            { icon: "◔", label: "Reports" },
+            { icon: "!", label: "Alerts" },
+            { icon: "⚙", label: "Settings" },
+          ]}
+          index={nav}
+          onChange={setNav}
+        />
+        <Surface carved radius={9} style={{ flex: 1, minWidth: 0, padding: 18 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 650, color: "rgba(215,224,240,0.9)", marginBottom: 10 }}>
+            {pages[nav]}
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <GIStat label="Sessions" value="1,204" delta="+4%" accent={GOOD} width={150} />
+            <GIStat label="p95" value="212ms" delta="−12ms" width={150} />
+            <GIStat label="Errors" value="3" delta="24h" accent={WARN} width={150} />
+          </div>
+          <p style={{ fontSize: 12.5, color: "rgba(150,162,184,0.65)", marginTop: 14, marginBottom: 0 }}>
+            Press the ≡ button for the drawer; the rail, bar, and drawer are the new app-shell
+            components (GIAppBar / GINavRail / GIDrawer).
+          </p>
+        </Surface>
+      </div>
+      <GIDrawer open={drawer} onClose={() => setDrawer(false)} title="Workspaces">
+        <GIList>
+          <GIListItem title="giui-web" subtitle="production" leading={<GIAvatar initials="GW" size={30} />} trailing={<GIBadge variant="solid" accent={GOOD}>live</GIBadge>} onClick={() => setDrawer(false)} />
+          <GIListItem title="cascade-lab" subtitle="staging" leading={<GIAvatar initials="CL" size={30} />} onClick={() => setDrawer(false)} />
+          <GIListItem title="photon-cli" subtitle="paused" leading={<GIAvatar initials="PC" size={30} />} onClick={() => setDrawer(false)} />
+        </GIList>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "10px 6px 0", fontSize: 11.5, color: "rgba(150,162,184,0.55)" }}>
+          close with <GIKbd>esc</GIKbd> or click outside
+        </div>
+      </GIDrawer>
+    </Surface>
+  );
+}
+
 // --- The template gallery -----------------------------------------------------
 
 export function Templates() {
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       <SectionTitle title="Examples" hint="Full compositions built from the kit — every panel, control and glow is in the same light field." />
+      <AppShell />
       <Dashboard />
       <Inbox />
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>

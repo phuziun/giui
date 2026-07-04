@@ -15,6 +15,7 @@ const GROUP_ORDER = [
   "Inputs",
   "Selection",
   "Navigation",
+  "App shell",
   "Overlays",
   "Data display",
   "Feedback",

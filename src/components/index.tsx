@@ -2184,3 +2184,212 @@ export function GIToaster({ max = 4 }: { max?: number }) {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// App shell: the frame for real applications — a top bar with slots, a
+// vertical navigation rail, and a slide-in drawer. Same three recipes as the
+// rest of the kit (raised chip / carved well / emissive accent), so an app
+// built from them sits in one continuous light field.
+// ---------------------------------------------------------------------------
+
+export function GIAppBar({
+  leading,
+  title,
+  trailing,
+  matte = false,
+  style,
+}: {
+  leading?: ReactNode;
+  title?: ReactNode;
+  trailing?: ReactNode;
+  /** Receive no GI bounce (for a backlit bar — see Surface.matte). */
+  matte?: boolean;
+  style?: CSSProperties;
+}) {
+  return (
+    <Surface
+      radius={10}
+      heightScale={1.2}
+      matte={matte}
+      style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", pointerEvents: "auto", ...style }}
+    >
+      {leading}
+      <div style={{ flex: 1, fontSize: 14.5, fontWeight: 650, color: "rgba(222,229,244,0.92)", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        {title}
+      </div>
+      {trailing}
+    </Surface>
+  );
+}
+
+// One rail item: flat at rest, a glowing accent chip when active (always
+// mounted — the state switches emission, per the kit convention).
+function GINavRailItem({
+  icon,
+  label,
+  active,
+  accent,
+  onClick,
+  collapsed,
+}: {
+  icon?: ReactNode;
+  label: string;
+  active: boolean;
+  accent: Vec3;
+  onClick: () => void;
+  collapsed: boolean;
+}) {
+  const [hover, setHover] = useState(false);
+  const lit = active || hover;
+  const ref = useGIShape({
+    albedo: active ? accent : SURFACE_ALBEDO,
+    tint: active ? 1 : 0,
+    emission: active ? scale(accent, 0.45) : [0, 0, 0],
+    displayScale: 6,
+    height: active ? 0.35 : 0.12,
+    bevel: 5,
+    cornerRadius: 7,
+  });
+  return (
+    <div
+      ref={ref as React.RefObject<HTMLDivElement>}
+      onClick={onClick}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      title={collapsed ? label : undefined}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: collapsed ? "10px 0" : "9px 12px",
+        justifyContent: collapsed ? "center" : "flex-start",
+        borderRadius: 7,
+        fontSize: 12.5,
+        fontWeight: active ? 650 : 480,
+        cursor: "pointer",
+        pointerEvents: "auto",
+        color: active ? "rgba(10,16,30,0.92)" : lit ? "rgba(215,224,240,0.92)" : "rgba(178,188,208,0.72)",
+      }}
+    >
+      {icon && <span style={{ fontSize: 15, lineHeight: 1, width: 18, textAlign: "center" }}>{icon}</span>}
+      {!collapsed && <span>{label}</span>}
+    </div>
+  );
+}
+
+export function GINavRail({
+  items,
+  index,
+  defaultIndex = 0,
+  onChange,
+  accent: accentProp,
+  collapsed = false,
+  width,
+  style,
+}: {
+  items: { icon?: ReactNode; label: string }[];
+  /** Controlled active index; omit for internal state. */
+  index?: number;
+  defaultIndex?: number;
+  onChange?: (i: number) => void;
+  accent?: Vec3;
+  /** Icon-only mode (labels become tooltips). */
+  collapsed?: boolean;
+  width?: number;
+  style?: CSSProperties;
+}) {
+  const accent = useAccent(accentProp);
+  const [internal, setInternal] = useState(defaultIndex);
+  const active = index ?? internal;
+  const pick = (i: number) => {
+    setInternal(i);
+    onChange?.(i);
+  };
+  return (
+    <Surface radius={10} style={{ display: "flex", flexDirection: "column", gap: 3, padding: 7, width: width ?? (collapsed ? 52 : 168), flex: "none", ...style }}>
+      {items.map((it, i) => (
+        <GINavRailItem key={it.label} icon={it.icon} label={it.label} active={i === active} accent={accent} onClick={() => pick(i)} collapsed={collapsed} />
+      ))}
+    </Surface>
+  );
+}
+
+export function GIDrawer({
+  open,
+  onClose,
+  side = "left",
+  width = 300,
+  title,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  side?: "left" | "right";
+  width?: number;
+  title?: ReactNode;
+  children?: ReactNode;
+}) {
+  // Mount only while open (a structural scene change — one full render).
+  // The panel shape is `live` so the light it casts follows the slide-in.
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    if (!open) {
+      setEntered(false);
+      return;
+    }
+    const id = requestAnimationFrame(() => setEntered(true));
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      cancelAnimationFrame(id);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open, onClose]);
+  const panelRef = useGIShape({
+    albedo: SURFACE_ALBEDO,
+    height: 1.6,
+    bevel: 18,
+    heightScale: 1.0,
+    opacity: 0.8,
+    cornerRadius: 12,
+    layer: 2, // overlay: paint over page content
+    live: true,
+  });
+  if (!open) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 120, pointerEvents: "auto" }}>
+      {/* transparent click-catcher (no dark scrim — it would dim the panel's
+          own canvas lighting; the box-shadow punch below dims everything BUT
+          the panel, like GIDialog) */}
+      <div onClick={onClose} style={{ position: "absolute", inset: 0 }} />
+      <div
+        ref={panelRef as React.RefObject<HTMLDivElement>}
+        style={{
+          position: "absolute",
+          top: 12,
+          bottom: 12,
+          [side]: 12,
+          width,
+          borderRadius: 12,
+          padding: "16px 14px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          transition: "transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.24s ease",
+          transform: entered ? "translateX(0)" : `translateX(${side === "left" ? -40 : 40}px)`,
+          opacity: entered ? 1 : 0,
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          boxShadow: "0 0 0 200vmax rgba(6, 8, 12, 0.35)",
+        } as CSSProperties}
+      >
+        {title && (
+          <div style={{ fontSize: 13.5, fontWeight: 650, color: "rgba(222,229,244,0.92)", padding: "0 6px 8px" }}>{title}</div>
+        )}
+        <div style={{ overflowY: "auto", minHeight: 0 }}>{children}</div>
+      </div>
+    </div>
+  );
+}

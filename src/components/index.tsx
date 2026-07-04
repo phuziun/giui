@@ -2013,10 +2013,21 @@ export function GICommandPalette({
 
 // --- Toast: a raised notification card with an accent status dot ------------
 
-export function GIToast({ title, message, accent: accentProp }: { title: string; message?: string; accent?: Vec3 }) {
+export function GIToast({
+  title,
+  message,
+  accent: accentProp,
+  live = false,
+}: {
+  title: string;
+  message?: string;
+  accent?: Vec3;
+  /** Track the card per-frame — set by GIToaster while cards slide/reflow. */
+  live?: boolean;
+}) {
   const accent = useAccent(accentProp);
-  const cardRef = useGIShape({ albedo: SURFACE_ALBEDO, height: 1.0, bevel: 14, heightScale: 1.0, opacity: 0.55, cornerRadius: 11 });
-  const dotRef = useGIShape({ kind: "circle", albedo: accent, tint: 1, emission: scale(accent, 0.7), displayScale: 8, height: 0.4, bevel: 3 });
+  const cardRef = useGIShape({ albedo: SURFACE_ALBEDO, height: 1.0, bevel: 14, heightScale: 1.0, opacity: 0.55, cornerRadius: 11, live });
+  const dotRef = useGIShape({ kind: "circle", albedo: accent, tint: 1, emission: scale(accent, 0.7), displayScale: 8, height: 0.4, bevel: 3, live });
   return (
     <div ref={cardRef as React.RefObject<HTMLDivElement>} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "12px 15px", borderRadius: 11, width: 260 }}>
       <div ref={dotRef as React.RefObject<HTMLDivElement>} style={{ width: 10, height: 10, borderRadius: "50%", marginTop: 4, flex: "none" }} />
@@ -2024,6 +2035,94 @@ export function GIToast({ title, message, accent: accentProp }: { title: string;
         <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(220,228,242,0.92)" }}>{title}</div>
         {message && <div style={{ fontSize: 12, color: "rgba(170,180,200,0.72)", marginTop: 2, lineHeight: 1.45 }}>{message}</div>}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Snackbar queue: mount ONE <GIToaster/> anywhere inside the provider, then
+// call toast(...) from any code (React or not). Toasts stack bottom-right,
+// slide in, auto-dismiss (click to dismiss early). The cards are `live` GI
+// shapes while mounted, so the light they cast follows the slide/reflow.
+// ---------------------------------------------------------------------------
+
+export type ToastOptions = { title: string; message?: string; accent?: Vec3; duration?: number };
+
+let toastDispatch: ((t: ToastOptions) => void) | null = null;
+
+/** Show a toast. No-op (with a console hint) if no <GIToaster/> is mounted. */
+export function toast(t: ToastOptions | string) {
+  const opts = typeof t === "string" ? { title: t } : t;
+  if (toastDispatch) toastDispatch(opts);
+  else console.warn("[giui] toast() called with no <GIToaster/> mounted");
+}
+
+type ToastItem = ToastOptions & { id: number; leaving: boolean };
+
+export function GIToaster({ max = 4 }: { max?: number }) {
+  const [items, setItems] = useState<ToastItem[]>([]);
+  const seq = useRef(0);
+  const timers = useRef(new Map<number, number>());
+
+  useEffect(() => {
+    const beginLeave = (id: number) => {
+      timers.current.delete(id);
+      setItems((xs) => xs.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+      window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 300);
+    };
+    toastDispatch = (t) => {
+      const id = ++seq.current;
+      setItems((xs) => [...xs.slice(-(max - 1)), { ...t, id, leaving: false }]);
+      timers.current.set(
+        id,
+        window.setTimeout(() => beginLeave(id), t.duration ?? 4000)
+      );
+    };
+    const pending = timers.current;
+    return () => {
+      toastDispatch = null;
+      pending.forEach((h) => window.clearTimeout(h));
+      pending.clear();
+    };
+  }, [max]);
+
+  const dismiss = (id: number) => {
+    const h = timers.current.get(id);
+    if (h) window.clearTimeout(h);
+    timers.current.delete(id);
+    setItems((xs) => xs.map((x) => (x.id === id ? { ...x, leaving: true } : x)));
+    window.setTimeout(() => setItems((xs) => xs.filter((x) => x.id !== id)), 300);
+  };
+
+  return (
+    <div
+      aria-live="polite"
+      style={{
+        position: "fixed",
+        right: 18,
+        bottom: 18,
+        zIndex: 300,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+        pointerEvents: "none",
+      }}
+    >
+      {items.map((t) => (
+        <div
+          key={t.id}
+          onClick={() => dismiss(t.id)}
+          style={{
+            pointerEvents: "auto",
+            cursor: "pointer",
+            transition: "opacity 0.26s ease, transform 0.26s ease",
+            ...(t.leaving ? { opacity: 0, transform: "translateY(6px)" } : { opacity: 1, transform: "translateY(0)" }),
+            animation: "gi-toast-in 0.24s ease",
+          }}
+        >
+          <GIToast title={t.title} message={t.message} accent={t.accent} live />
+        </div>
+      ))}
     </div>
   );
 }

@@ -16,8 +16,10 @@ import {
   GIStat,
   GITag,
   GIToast,
+  GIToaster,
   GIToggle,
   Surface,
+  toast,
 } from "./components";
 import { useGIShape } from "./gi/useGIShape";
 import { useGITheme } from "./gi/GIProvider";
@@ -276,6 +278,7 @@ function Studio({
     const n = name.trim() || `preset ${Object.keys(presets).length + 1}`;
     persist({ ...presets, [n]: current });
     setName("");
+    toast({ title: "Preset saved", message: `“${n}” added to your presets.` });
   };
   const remove = (n: string) => {
     const next = { ...presets };
@@ -298,6 +301,7 @@ function Studio({
       () => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1200);
+        toast({ title: "JSON copied", message: "Full state — settings and light positions." });
       },
       () => {}
     );
@@ -593,6 +597,7 @@ export default function App() {
             />
           ) : null
         )}
+        <GIToaster />
       </GIProvider>
     </div>
   );

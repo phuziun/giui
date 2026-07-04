@@ -252,7 +252,15 @@ export function GIField({
 
 // --- Toggle: carved track, raised knob that emits a soft accent when on ------
 
-export function GIToggle({ accent: accentProp, defaultOn = false }: { accent?: Vec3; defaultOn?: boolean }) {
+export function GIToggle({
+  accent: accentProp,
+  defaultOn = false,
+  onChange,
+}: {
+  accent?: Vec3;
+  defaultOn?: boolean;
+  onChange?: (on: boolean) => void;
+}) {
   const accent = useAccent(accentProp);
   const [on, setOn] = useState(defaultOn);
   // Dark raised handle -- a dark dot against the bright emissive track.
@@ -280,7 +288,7 @@ export function GIToggle({ accent: accentProp, defaultOn = false }: { accent?: V
   return (
     <div
       ref={trackRef as React.RefObject<HTMLDivElement>}
-      onClick={() => setOn((v) => !v)}
+      onClick={() => { const n = !on; setOn(n); onChange?.(n); }}
       style={{
         position: "relative",
         width: 52,

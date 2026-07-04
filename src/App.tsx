@@ -27,6 +27,7 @@ import { Zoo } from "./components/Zoo";
 import { Templates } from "./components/Templates";
 import { Landing, NavGlow, hslToLinear } from "./components/Landing";
 import { Docs } from "./components/docs/Docs";
+import { Labs } from "./components/Labs";
 
 type Vec3 = [number, number, number];
 
@@ -450,7 +451,7 @@ function Studio({
 
 // --- demo ------------------------------------------------------------------
 
-const ROUTES = ["home", "examples", "components", "docs", "studio"];
+const ROUTES = ["home", "examples", "components", "docs", "studio", "labs"];
 
 // The wordmark's dot. Off the home route (`lit`) it becomes a glowing accent
 // emitter — the logo lights up over the nav backlight. On home it's a real
@@ -614,10 +615,10 @@ export default function App() {
                 <LitWordmark onClick={() => nav("home")} />
               )}
               <GISegmented
-                options={["Home", "Examples", "Components", "Docs", "Studio"]}
+                options={["Home", "Examples", "Components", "Docs", "Studio", "Labs"]}
                 index={ROUTES.indexOf(page)}
                 onChange={(i) => nav(ROUTES[i])}
-                width={480}
+                width={545}
                 matte={page !== "home"}
               />
             </Surface>
@@ -636,6 +637,8 @@ export default function App() {
           )}
 
           {page === "docs" && <Docs slug={sub} />}
+
+          {page === "labs" && <Labs />}
 
           {page === "examples" && <Templates />}
 

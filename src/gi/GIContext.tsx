@@ -162,7 +162,11 @@ export function GICanvas({
       // detail — on a 2× display with a long page that alone is tens of
       // millions of pixels per animated frame. DOM text is unaffected.
       const capW = Math.max(640, paramsRef.current.maxResolution);
-      const k = Math.min(dpr, capW / cssW);
+      // Also clamp at 2 backing px per css px: on a narrow, high-dpr phone
+      // (390css @ 3x) the width cap never engages (1216/390 > 3), which
+      // silently ran the whole pipeline at a 1170x3700 backing — the main
+      // reason "mobile felt heavy". 2x is visually sharp on a 3x screen.
+      const k = Math.min(dpr, 2, capW / cssW);
       backingScale.current = k;
       const w = Math.max(1, Math.floor(cssW * k));
       const h = Math.max(1, Math.floor(cssH * k));

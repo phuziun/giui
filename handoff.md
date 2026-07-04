@@ -1011,3 +1011,66 @@ All agreed roadmap items are DONE (each verified headlessly + committed separate
 NOT done (deliberate): time-driven film grain (breaks zero-idle-GPU by
 design), dirty-rect band narrowing (perf headroom not needed), owner-decision
 items (npm publish/name, sponsors, custom domain, real-name question).
+
+## EXPERIMENT: GI-Lite (2026-07-04, owner: "match the look, much more performant,
+## resolution independent, mobile / dense layouts — feel free to invent")
+
+**`src/gi2/` + the `#/labs` route (in the nav).** A second, experimental engine
+answering "SDFs × Spherical Harmonics": same look recipe, restructured cost.
+
+### Architecture (shaders/lite.wgsl — one file, 4 entry points)
+1. `emitCS` — emission+occlusion raster at **css/6** (the only rasterized state).
+2. `probeCS` — **2D circular-harmonics probe grid** (16css spacing): each probe
+   marches 20 rays through emitLo (front-to-back transmittance, cascade-style),
+   projects onto **L0+L1** (a0, a1, b1 × RGB in 3 rgba16f textures). Cost ∝ css
+   area — **independent of DPR**. Reconstruction matches the cascade gather's
+   flat+dir split: flat = π·a0, dir = max(a0 + (π/4)(a1·nx + b1·ny), 0).
+3. `tileCS` — per-32devpx-tile shape lists, one thread per TILE looping shapes
+   (deterministic → painter's order preserved; no atomics/sort). Cap 23/tile.
+4. `fs` (present) — the ONE device-res pass: **analytic SDF shading** (exact
+   rounded-rect gradients + closed-form bevel-profile derivative → crisp relief
+   at ANY resolution, no G-buffer), analytic AO (looming-wall falloff), **offset
+   -SDF cast shadows** (one shifted SDF eval per raised shape ~ the marched
+   look), 2 jittered CH taps (giSmooth-equivalent), ACES+grain inline.
+   Zero full-res intermediate textures.
+
+`renderer2.ts` (reuses gi/device + gi/scene pack at scale=1 = css units),
+`GI2Board.tsx` (mini provider + useGI2Shape), `components/Labs.tsx` (lab board:
+LPanel/LButton/LToggle/LWell/LDot ports, draggable LLight, 84-chip dense grid,
+Benchmark button + `window.__gi2Bench()` headless hook).
+
+### Calibration traps (each cost a broken-looking first render)
+- **n2 for directional GI must be `normalize(vec3(-gradH,1)).xy·normalStrength`**
+  — normalizing gradH alone makes it near-unit and the dir term blows out ~5×.
+- **Height-field normal is (-dh, 1)** — sign flip = lighting from the wrong side.
+- **Clamp the L1 reconstruction ≥ 0** — negative lobes SUBTRACT light and paint
+  dark smudges at probe scale.
+- Interior SDF gradient needs a soft wall-blend near the diagonal (hard select
+  draws mitre lines the raster engine's finite differences never showed).
+- Offset-shadow penumbra: pen = 6 + off·softness (px); first guess ×12 gave
+  177px smears.
+
+### Measured (M-series Mac, headless, forced continuous full renders)
+- Desktop 1400×900 @2×: **GI-Lite 120fps vsync-limited** vs cascades 51fps.
+- Phone-sim 390×844 @3×: **GI-Lite 120fps at NATIVE 3× res**; cascades reach
+  120fps only at maxResolution 480 (= 2.4× upscale, visibly soft).
+- Dense +84 shapes: **no measurable cost** (tile binning works).
+- CPU submit ~0.1-0.4ms; probes ~2k for the board.
+
+### Main-engine fix that fell out of the experiment
+`GIContext.resize`: backing scale is now `min(dpr, 2, capW/cssW)` — on narrow
+high-dpr phones the width cap NEVER engaged (1216/390 > 3), so the whole
+pipeline silently ran at a 1170×3700 backing. This alone is a big part of
+"mobile felt heavy" with the current engine.
+
+### Honest gaps / next steps if promoted beyond a lab
+- Not ported: matte penumbra, SCREEN (video/canvas light), scroll-window mode
+  (board is a fixed region), band rendering, adaptive quality (doesn't need it
+  so far), per-shape rolloff variety tested only lightly.
+- Probe grid is per-board; a full-page version wants the viewport-window +
+  content-anchored probe phase treatment the main engine already solved.
+- Possible upgrades: L2 band (2 more coefficients) for sharper directionality;
+  temporal probe reuse (only re-march probes near changed shapes); probe rays
+  against an SDF texture (JFA) instead of emitLo for harder shadows.
+- Look match ≈ target aesthetic; deltas: shadows slightly simpler (single-eval
+  penumbra), GI a touch smoother (L1 vs 16-dir cascade-0).

@@ -4,6 +4,7 @@
 
 import type { GPUContext } from "../gi/device";
 import type { Scene } from "../gi/scene";
+import { SCREEN_TEX_W, SCREEN_TEX_H, type ScreenSource } from "../gi/renderer";
 import liteSrc from "./shaders/lite.wgsl?raw";
 
 export type Gi2Params = {
@@ -52,7 +53,7 @@ export const GI2_DEFAULTS: Gi2Params = {
   rayMax: 380,
   loDown: 6,
   occlusion: 0.2,
-  giProbeLift: 0.8,
+  giProbeLift: 1.0,
   ambient: 0.24,
   keyIntensity: 0.41,
   keyDir: [-0.45, -0.6, 0.66],
@@ -84,7 +85,7 @@ export const GI2_DEFAULTS: Gi2Params = {
 
 const TILE = 32; // device px
 const TILE_SLOTS = 24; // 1 count + 23 indices (matches TILE_CAP in WGSL)
-const MAX_SHAPES = 256;
+const MAX_SHAPES = 512; // matches the Scene store (full template pages fit)
 const FLOATS_PER_SHAPE = 20;
 
 export class Renderer2 {
@@ -99,9 +100,10 @@ export class Renderer2 {
   private emitTex!: GPUTexture;
   private chTex: GPUTexture[] = [];
   private sampler!: GPUSampler;
+  private screenTex!: GPUTexture;
   private groups: Record<string, GPUBindGroup> = {};
   private sized = { cssW: 0, cssH: 0, outW: 0, outH: 0 };
-  private uarr = new Float32Array(64);
+  private uarr = new Float32Array(80);
   pipelineMs = 0;
 
   private constructor(ctx: GPUContext) {
@@ -128,12 +130,18 @@ export class Renderer2 {
     r.tilePipe = tilePipe;
     r.presentPipe = presentPipe;
     r.pipelineMs = performance.now() - t0;
-    r.ubo = ctx.device.createBuffer({ size: 64 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    r.ubo = ctx.device.createBuffer({ size: 80 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     r.shapeBuf = ctx.device.createBuffer({
       size: MAX_SHAPES * FLOATS_PER_SHAPE * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     r.sampler = ctx.device.createSampler({ magFilter: "linear", minFilter: "linear" });
+    // SCREEN light-source texture (canvas/video frames copied in per render).
+    r.screenTex = ctx.device.createTexture({
+      size: [SCREEN_TEX_W, SCREEN_TEX_H],
+      format: "rgba8unorm",
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
     return r;
   }
 
@@ -151,8 +159,8 @@ export class Renderer2 {
       format: "rgba16float",
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
-    const px = Math.max(2, Math.ceil(cssW / p.probeSpacing));
-    const py = Math.max(2, Math.ceil(cssH / p.probeSpacing));
+    const px = Math.max(2, Math.ceil(cssW / p.probeSpacing) + 2);
+    const py = Math.max(2, Math.ceil(cssH / p.probeSpacing) + 2);
     this.chTex = [0, 1, 2].map(() =>
       dev.createTexture({
         size: [px, py],
@@ -175,6 +183,8 @@ export class Renderer2 {
         entries: [
           { binding: 0, resource: { buffer: this.ubo } },
           { binding: 1, resource: { buffer: this.shapeBuf } },
+          { binding: 2, resource: this.sampler },
+          { binding: 3, resource: this.screenTex.createView() },
         ],
       }),
       emit1: dev.createBindGroup({
@@ -214,6 +224,7 @@ export class Renderer2 {
           { binding: 0, resource: { buffer: this.ubo } },
           { binding: 1, resource: { buffer: this.shapeBuf } },
           { binding: 2, resource: this.sampler },
+          { binding: 3, resource: this.screenTex.createView() },
         ],
       }),
       pres1: dev.createBindGroup({
@@ -228,8 +239,17 @@ export class Renderer2 {
     };
   }
 
-  /** cssW/cssH = board css size; the canvas backing store is outW×outH. */
-  render(scene: Scene, p: Gi2Params, cssW: number, cssH: number, dpr: number) {
+  /** cssW/cssH = the canvas WINDOW's css size; originY = content coord of its
+   *  top edge (0 for a fixed board; scroll-linked in full-page mode). */
+  render(
+    scene: Scene,
+    p: Gi2Params,
+    cssW: number,
+    cssH: number,
+    dpr: number,
+    originY = 0,
+    screen?: ScreenSource
+  ) {
     const dev = this.ctx.device;
     const canvasTex = this.ctx.context.getCurrentTexture();
     const outW = canvasTex.width;
@@ -248,6 +268,17 @@ export class Renderer2 {
     const tilesX = Math.ceil(outW / TILE);
     const tilesY = Math.ceil(outH / TILE);
 
+    if (screen) {
+      this.ctx.device.queue.copyExternalImageToTexture(
+        { source: screen.source },
+        { texture: this.screenTex },
+        [SCREEN_TEX_W, SCREEN_TEX_H]
+      );
+    }
+    // Content-anchored probe grid: quantize the window origin to the spacing
+    // so probe (0,0) sits on the absolute content grid (no swimming on scroll).
+    const probeOriginY = Math.floor(originY / p.probeSpacing) * p.probeSpacing;
+
     const u = this.uarr;
     u.set([cssW, cssH, loW, loH, px, py, outW, outH], 0);
     u.set([dpr, count, p.probeSpacing, p.rayCount, p.raySteps, p.rayMax, p.occlusion, p.edgeAA], 8);
@@ -261,7 +292,15 @@ export class Renderer2 {
     u.set([p.aoStrength, p.aoRadius, p.shadowStrength, p.shadowScale], 44);
     u.set([p.shadowSoftness, p.exposure, p.grain, this.ctx.encodeSrgb ? 1 : 0], 48);
     u.set([p.surfaceTexture, p.textureScale, tilesX, TILE], 52);
-    dev.queue.writeBuffer(this.ubo, 0, u.buffer, 0, 64 * 4);
+    u.set([0, originY, 0, probeOriginY], 56); // origin, probeOrigin
+    if (screen) {
+      u.set([screen.x, screen.y, screen.x + screen.w, screen.y + screen.h], 60);
+      u.set([screen.emit, screen.display, screen.topFade ?? 0, screen.topFadeH ?? 0.4], 64);
+    } else {
+      u.set([0, 0, -1, 0], 60); // x1 <= x0 → no screen
+      u.set([0, 0, 0, 0], 64);
+    }
+    dev.queue.writeBuffer(this.ubo, 0, u.buffer, 0, 80 * 4);
 
     const enc = dev.createCommandEncoder();
     {
@@ -296,6 +335,7 @@ export class Renderer2 {
   }
 
   destroy() {
+    this.screenTex?.destroy();
     this.emitTex?.destroy();
     this.chTex.forEach((t) => t.destroy());
     this.tileBuf?.destroy();

@@ -119,6 +119,12 @@ Lighting **distances are authored in CSS pixels** and scale-invariant, so
 presets only trade sharpness — AO/shadow/glow character is identical at every
 quality level.
 
+There are also **two renderers** behind the same components:
+`params={{ engine: "lite" }}` switches from radiance cascades to the
+experimental **GI-Lite** engine (analytic SDF shading + circular-harmonics
+probes — resolution independent, mobile-oriented; see the demo's Labs tab and
+Studio → Render → engine to try it live).
+
 ## Performance: what the engine already does
 
 You should not need to think about GPU cost for a normal app page. Built in:

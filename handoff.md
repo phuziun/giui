@@ -1074,3 +1074,53 @@ pipeline silently ran at a 1170×3700 backing. This alone is a big part of
   against an SDF texture (JFA) instead of emitLo for harder shadows.
 - Look match ≈ target aesthetic; deltas: shadows slightly simpler (single-eval
   penumbra), GI a touch smoother (L1 vs 16-dir cascade-0).
+
+## GI-Lite PROMOTED to a switchable full-site engine (2026-07-04, owner:
+## "full featured mode I can switch to after more testing")
+
+**Studio → Render → `engine` (cascade | lite)** now switches THE WHOLE SITE
+between renderers; library consumers: `<GIProvider params={{ engine: "lite" }}>`.
+`GIParams.engine` (default "cascade"), `GIProvider` mounts `GICanvasLite`
+(src/gi2/GICanvasLite.tsx) instead of GICanvas — SAME GIContext contract
+(GIContext + ScreenSpec now exported from GIContext.tsx), so every component,
+useGIShape, and useGIScreen work unchanged on either engine.
+
+### What was added for parity (renderer2 + lite.wgsl)
+- **Content-window/full-page mode**: `render(..., originY, screen)` — all math
+  in CONTENT css coords (`p = devPx/dpr + origin`), probe grid quantized to an
+  absolute content grid (`probeOrigin`) so nothing swims on scroll. Canvas =
+  viewport + 2×OVERSCAN, translate3d'd like the main engine. Verified: deep-
+  zoo scroll pixel-clean, 8.29ms/frame during continuous scrolling.
+- **SCREEN support**: emitCS pours the picture in as emission (sRGB² linearize
+  + topFade), present adds display INTO `disp` before the emitter mask.
+  Hero video/canvas projection works on lite.
+- **Analytic matte**: hard/soft fields computed per-pixel from each matte
+  shape's SDF (max-combined) — no tint-channel encoding needed at all; same
+  revelation giMask formula. Nav backlight reads correctly.
+- **MAX_SHAPES 512**, dialog/menu layers work through the tile lists (order-
+  preserving binning), device-loss recovery + StrictMode hygiene + ambient
+  throttle (30Hz) in GICanvasLite. No adaptive/pacing machinery — not needed.
+
+### THE calibration lesson of the port (cost a flooded-white hero)
+`cascade.wgsl:62` accumulates `radiance += T · emission · op` — emission is
+PREMULTIPLIED by local opacity and emitter texels keep full occlusion, so a ray
+inside an emitter sums the geometric series op·(1-op)^k ≈ 1× emission TOTAL
+regardless of emitter SIZE (surface-radiance-like, self-limiting). GI-Lite's
+emitLo now stores `emis·op` premultiplied with the same occ rule
+(lite.wgsl emitCS comment). Without it the hero screen (huge emitter)
+flooded the probe field ~9×. giProbeLift stays 1.0 after this fix.
+Also fixed in the port: analytic AO changed to the two-sided PROFILE
+DIFFERENCE across aoRadius × 0.35 (angular average) — plateau-minus-height
+painted picture-frame rings on cards, then the unscaled max ringed small chips.
+
+### Verified on lite (A/B vs cascade at 1400×900)
+home (hero screen + fluid + wordmark), components zoo (~150 shapes; look
+matches cascade closely: glows, wash, matte nav), examples (app shell),
+dialog overlay (layer-2 over tiles + punch dim), mid-scroll clean, scroll
+bench 8.29ms/frame. Remaining look deltas (acceptable for testing): slightly
+smoother GI than the 16-dir cascade gather, offset shadows a touch simpler,
+minor probe blotch at hard viewport edges.
+
+### Files: gi2/GICanvasLite.tsx (new), gi2/renderer2.ts + lite.wgsl (grown),
+### gi/GIContext.tsx (exports GIContext/ScreenSpec/OVERSCAN), gi/types.ts
+### (engine field), GIProvider (switch), App.tsx (leva engine select).

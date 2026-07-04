@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { GICanvas } from "./GIContext";
+import { GICanvasLite } from "../gi2/GICanvasLite";
 import { DEFAULT_PARAMS, type GIParams } from "./types";
 
 type Vec3 = [number, number, number];
@@ -100,9 +101,15 @@ export function GIProvider({
   );
   return (
     <ThemeContext.Provider value={mergedTheme}>
-      <GICanvas params={mergedParams} showPerf={showPerf} onError={onError} onGPUInfo={handleGPUInfo}>
-        {children}
-      </GICanvas>
+      {mergedParams.engine === "lite" ? (
+        <GICanvasLite params={mergedParams} onError={onError} onGPUInfo={handleGPUInfo}>
+          {children}
+        </GICanvasLite>
+      ) : (
+        <GICanvas params={mergedParams} showPerf={showPerf} onError={onError} onGPUInfo={handleGPUInfo}>
+          {children}
+        </GICanvas>
+      )}
     </ThemeContext.Provider>
   );
 }

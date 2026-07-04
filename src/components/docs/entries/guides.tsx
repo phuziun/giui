@@ -149,7 +149,7 @@ function GlowCard({ children }: { children: React.ReactNode }) {
     name: "Studio",
     group: "Getting started",
     intro:
-      "The Studio route (in the nav above) is the live tuning workbench: a panel driving every lighting parameter — key light, shadows, AO, GI bounce, material, film grain — with the changes applied to the whole site in real time, plus a preset manager to save, compare, and copy configurations.",
+      "The Studio route (in the nav above) is the live tuning workbench: a panel driving every lighting parameter — key light, shadows, AO, GI bounce, material, film grain — with the changes applied to the whole site in real time, plus a preset manager to save, compare, and copy configurations. Render → engine switches the whole site between the radiance-cascade renderer and the experimental GI-Lite engine (see the Labs tab).",
     examples: [
       {
         title: "From Studio to your app",

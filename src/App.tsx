@@ -90,6 +90,9 @@ function useStudio() {
       {
         // One quality dial that co-tunes maxResolution/cascades/rays. Picking a
         // preset overwrites those sliders; tweaking them after is "custom".
+        // Which renderer lights the page — cascade (original) or lite
+        // (SDF x circular harmonics, the Labs engine, mobile-oriented).
+        engine: { value: seed("engine", "cascade"), options: ["cascade", "lite"] },
         quality: { value: seed("quality", "custom"), options: ["custom", "low", "medium", "high"] },
         renderScale: { value: seed("renderScale", D.renderScale), min: 0.4, max: 1, step: 0.05 },
         maxResolution: { value: seed("maxResolution", D.maxResolution), min: 480, max: 2560, step: 64 },
@@ -183,6 +186,7 @@ function useStudio() {
 
   const params: GIParams = useMemo(
     () => ({
+      engine: v.engine as GIParams["engine"],
       renderScale: v.renderScale,
       maxResolution: v.maxResolution,
       adaptiveQuality: v.adaptiveQuality,

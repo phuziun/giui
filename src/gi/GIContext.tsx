@@ -11,7 +11,7 @@ import { Renderer, type ScreenSource } from "./renderer";
 import { Scene } from "./scene";
 import { DEFAULT_PARAMS, type GIParams, type Shape } from "./types";
 
-type ScreenSpec = {
+export type ScreenSpec = {
   el: HTMLElement;
   source: HTMLCanvasElement;
   emit: number;
@@ -20,18 +20,20 @@ type ScreenSpec = {
   topFadeH: number;
 };
 
-type GIContextValue = {
+export type GIContextValue = {
   rootRef: React.RefObject<HTMLDivElement | null>;
   setShape: (id: string, shape: Shape | null) => void;
   setScreen: (spec: ScreenSpec | null) => void;
   componentGlow: number;
 };
 
-const GIContext = createContext<GIContextValue | null>(null);
+// Exported so alternative engines (GICanvasLite) can PROVIDE the same context —
+// components and hooks (useGIShape/useGIScreen) work unchanged on either.
+export const GIContext = createContext<GIContextValue | null>(null);
 
 // Extra rows rendered above/below the viewport (css px) in viewport-canvas
 // mode, so emitters just off-screen still light the visible edge.
-const OVERSCAN = 200;
+export const OVERSCAN = 200;
 
 // Bumped manually with meaningful renderer changes: shows up in the HUD and
 // the diag beacon, so a stale tab (dead HMR socket, old bundle) is instantly

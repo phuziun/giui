@@ -33,6 +33,10 @@ export const MAX_SHAPES = 512;
 
 // Runtime-tunable GI parameters (driven by the leva debug panel).
 export type GIParams = {
+  // Which renderer lights the page: "cascade" (radiance cascades — the
+  // original) or "lite" (SDF x circular harmonics — experimental, mobile-
+  // oriented; see src/gi2). Same components, same look targets.
+  engine: "cascade" | "lite";
   renderScale: number; // 0.5..1, render resolution vs css * dpr
   maxResolution: number; // hard cap on the GI render's longest side (px)
   adaptiveQuality: boolean; // auto-lower resolution under load, restore when idle
@@ -90,6 +94,7 @@ export type GIParams = {
 // componentGlow, subdued key light, no background GI spill / sky, soft relief
 // carried by a strong normalStrength, long soft cast shadows.
 export const DEFAULT_PARAMS: GIParams = {
+  engine: "cascade",
   renderScale: 1,
   // Lighting distances are css-authored (scale-invariant), so resolution is a
   // pure sharpness/perf dial now — 1216 is ~2× cheaper than the old 1664

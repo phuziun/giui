@@ -54,11 +54,21 @@ struct P {
   aoStrength : f32, aoRadius : f32, shadowStrength : f32, shadowScale : f32,
   shadowSoftness : f32, exposure : f32, grain : f32, encodeSrgb : f32,
   surfaceTexture : f32, textureScale : f32, tilesX : f32, tileSize : f32,
+
+  // Full-page mode: the canvas is a viewport window onto the content; all
+  // shape math runs in CONTENT css coords (shapes never re-measure on scroll,
+  // noise/probes stay glued to content).
+  origin : vec2<f32>,      // content coords of the window's top-left
+  probeOrigin : vec2<f32>, // content coords of probe (0,0) — spacing-quantized
+  // SCREEN light source (a canvas/video projected as light), content coords.
+  screen : vec4<f32>,       // x0, y0, x1, y1 (x1 <= x0 = none)
+  screenParams : vec4<f32>, // emit, display, topFade, topFadeH
 };
 
 @group(0) @binding(0) var<uniform> U : P;
 @group(0) @binding(1) var<storage, read> shapes : array<Shape>;
 @group(0) @binding(2) var samp : sampler;
+@group(0) @binding(3) var screenTex : texture_2d<f32>;
 
 // Pass-specific bindings live in group(1) so one layout serves several passes.
 @group(1) @binding(0) var emitLoW : texture_storage_2d<rgba16float, write>;
@@ -153,9 +163,9 @@ fn vnoise(p : vec2<f32>) -> f32 {
 @compute @workgroup_size(8, 8)
 fn emitCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (f32(gid.x) >= U.loSize.x || f32(gid.y) >= U.loSize.y) { return; }
-  let p = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) * (U.cssSize / U.loSize);
+  let p = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) * (U.cssSize / U.loSize) + U.origin;
   var emis = vec3<f32>(0.0);
-  var occ = 0.0;
+  var op = 0.0; // raw opacity (max over covering shapes)
   let texel = U.cssSize.x / U.loSize.x;
   let n = u32(U.shapeCount);
   for (var i = 0u; i < n; i = i + 1u) {
@@ -165,13 +175,27 @@ fn emitCS(@builtin(global_invocation_id) gid : vec3<u32>) {
     let cov = 1.0 - smoothstep(0.0, texel, d);
     if (cov <= 0.0) { continue; }
     emis += s.emission.rgb * cov;
-    // Emitters keep full occlusion (solid light sources); passive shapes are
-    // scaled by the global `occlusion` — same rule as the cascade engine.
-    let isEmit = max(max(s.emission.r, s.emission.g), s.emission.b) > 0.003;
-    let op = s.albedo.a * cov * select(U.occlusion, 1.0, isEmit);
-    occ = max(occ, op);
+    op = max(op, s.albedo.a * cov);
   }
-  textureStore(emitLoW, vec2<i32>(gid.xy), vec4<f32>(emis, occ));
+  // SCREEN light: inside its rect the (sRGB-encoded) picture pours into the
+  // field as emission, thinned toward the top edge by topFade.
+  if (U.screen.z > U.screen.x &&
+      p.x >= U.screen.x && p.y >= U.screen.y && p.x < U.screen.z && p.y < U.screen.w) {
+    let uv = (p - U.screen.xy) / (U.screen.zw - U.screen.xy);
+    let enc = textureSampleLevel(screenTex, samp, uv, 0.0).rgb;
+    let pic = enc * enc; // ~ sRGB -> linear (same trick as the cascade engine)
+    let fade = mix(1.0 - U.screenParams.z, 1.0,
+                   smoothstep(0.0, max(U.screenParams.w, 1e-3), uv.y));
+    emis += pic * U.screenParams.x * fade;
+  }
+  // CRITICAL calibration parity with the cascade march (cascade.wgsl:60-63):
+  // emission is PREMULTIPLIED by the local opacity, and emitter texels keep
+  // full occlusion — so a ray inside an emitter accumulates the geometric
+  // series op·(1-op)^k, which sums to ~1x emission REGARDLESS of emitter size.
+  // Without this, a large emitter (the hero screen) floods the field ~9x.
+  let isEmit = max(max(emis.r, emis.g), emis.b) > 0.0008;
+  let occ = op * select(U.occlusion, 1.0, isEmit);
+  textureStore(emitLoW, vec2<i32>(gid.xy), vec4<f32>(emis * op, occ));
 }
 
 // --------------------------------------------------------------------------
@@ -186,7 +210,9 @@ fn emitCS(@builtin(global_invocation_id) gid : vec3<u32>) {
 @compute @workgroup_size(8, 8)
 fn probeCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   if (f32(gid.x) >= U.probeGrid.x || f32(gid.y) >= U.probeGrid.y) { return; }
-  let center = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) * U.probeSpacing;
+  // Content-anchored: probe (0,0) sits at probeOrigin (spacing-quantized), so
+  // the grid never swims against content while scrolling.
+  let center = U.probeOrigin + (vec2<f32>(gid.xy) + vec2<f32>(0.5)) * U.probeSpacing;
   let rays = u32(U.rayCount);
   let steps = u32(U.raySteps);
   // Golden-ish per-probe rotation decorrelates neighbouring probes; the
@@ -204,8 +230,9 @@ fn probeCS(@builtin(global_invocation_id) gid : vec3<u32>) {
     for (var i = 0u; i < steps; i = i + 1u) {
       let t = (f32(i) + 0.5) * dt;
       let q = center + dir * t;
-      if (q.x < 0.0 || q.y < 0.0 || q.x >= U.cssSize.x || q.y >= U.cssSize.y) { break; }
-      let sm = textureSampleLevel(emitLo, samp, q / U.cssSize, 0.0);
+      let qw = q - U.origin; // content -> window coords for the raster lookup
+      if (qw.x < 0.0 || qw.y < 0.0 || qw.x >= U.cssSize.x || qw.y >= U.cssSize.y) { break; }
+      let sm = textureSampleLevel(emitLo, samp, qw / U.cssSize, 0.0);
       rad += sm.rgb * T;
       T *= 1.0 - clamp(sm.a, 0.0, 1.0);
       if (T < 0.01) { break; }
@@ -234,8 +261,8 @@ fn tileCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   let tilesX = u32(U.tilesX);
   let tilesY = u32(ceil(U.outSize.y / U.tileSize));
   if (gid.x >= tilesX || gid.y >= tilesY) { return; }
-  let tcssMin = vec2<f32>(gid.xy) * U.tileSize / U.dpr;
-  let tcssMax = (vec2<f32>(gid.xy) + vec2<f32>(1.0)) * U.tileSize / U.dpr;
+  let tcssMin = vec2<f32>(gid.xy) * U.tileSize / U.dpr + U.origin;
+  let tcssMax = (vec2<f32>(gid.xy) + vec2<f32>(1.0)) * U.tileSize / U.dpr + U.origin;
   let base = (gid.y * tilesX + gid.x) * (TILE_CAP + 1u);
   var count = 0u;
   let n = u32(U.shapeCount);
@@ -297,7 +324,7 @@ fn sampleCH(tex : texture_2d<f32>, probe : vec2<f32>) -> vec3<f32> {
 @fragment
 fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let devPx = in.pos.xy;
-  let p = devPx / U.dpr; // shade in css space — resolution independence
+  let p = devPx / U.dpr + U.origin; // CONTENT css coords — scroll-stable noise/relief
 
   // Tile list for this pixel (painter-ordered shape indices).
   let tx = u32(devPx.x / U.tileSize);
@@ -309,6 +336,8 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   var cover = 0.0;
   var tint = 0.0;
   var disp = vec3<f32>(0.0);
+  var matteHard = 0.0; // face + bevel lip of any matte shape (kills component GI)
+  var matteSoft = 0.0; // feathered apron (reveals/curbs background GI smoothly)
   var gradH = vec2<f32>(0.0); // relief gradient (per-shape heightScale baked in)
   var hRaw = 0.0;             // physical height (AO / shadows)
   var ao = 0.0;
@@ -322,12 +351,22 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
     let d = shapeSD(s, p);
 
     // Body coverage + painter albedo/tint (same semantics as the raster engine).
+    // Matte packs (tint - 2); decode the real tint and build the smooth
+    // suppression field straight from the SDF — the analytic engine needs no
+    // texture-channel encoding for this.
+    let isMatte = s.extra.y < -0.5;
+    let realTintS = select(s.extra.y, s.extra.y + 2.0, isMatte);
     let cov = (1.0 - smoothstep(0.0, U.edgeAA, d)) * s.extra.z;
     if (cov > 0.0) {
       albedo = mix(albedo, s.albedo.rgb, cov);
       cover = max(cover, cov);
-      tint = mix(tint, s.extra.y, cov);
+      tint = mix(tint, realTintS, cov);
       disp += s.emission.rgb * cov * s.extra.x;
+    }
+    if (isMatte) {
+      let lipM = s.params.w * 0.5 * (1.0 - U.edgeBias) + U.edgeAA;
+      matteHard = max(matteHard, 1.0 - smoothstep(lipM, lipM + 5.0, d));
+      matteSoft = max(matteSoft, 1.0 - smoothstep(lipM, lipM + max(s.params.w * 0.45, 8.0), d));
     }
 
     // Relief: analytic bevel gradient (closed-form profile derivative × SDF
@@ -346,14 +385,21 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
       }
     }
 
-    // Contact AO, analytically: raised neighbours loom over lower pixels
-    // (falloff over aoRadius from the silhouette); carved wells shadow their
-    // own floor near the wall.
-    if (hBody > 0.0) {
-      ao += max(hBody - hRaw, 0.0) * clamp(1.0 - max(d, 0.0) / U.aoRadius, 0.0, 1.0)
-            * select(1.0, 0.0, d < -U.aoRadius); // deep interior plateau: no self-AO
-    } else if (hBody < 0.0 && d < 0.0) {
-      ao += -hBody * clamp(1.0 + d / U.aoRadius, 0.0, 1.0) * 0.7;
+    // Contact AO — the analytic version of the raster engine's 4-tap height
+    // difference at aoRadius: how much HIGHER does this shape's own profile
+    // get within aoRadius of here, in either direction along the SDF? Peaks
+    // in crevices (the foot of a lip, a carved floor near its wall) and is
+    // zero on plateaus and far outside — no picture-frame ring.
+    if (hBody != 0.0) {
+      let tIn = clamp((-(d - U.aoRadius) + outer) / bevel, 0.0, 1.0);
+      let tOut = clamp((-(d + U.aoRadius) + outer) / bevel, 0.0, 1.0);
+      let h0 = hBody * edgeProfile(t, rk);
+      let hIn = hBody * edgeProfile(tIn, rk);
+      let hOut = hBody * edgeProfile(tOut, rk);
+      // 0.35 ~ the angular average the raster engine's 4 rotated taps take
+      // (only ~a third of directions run up the gradient); the max alone
+      // painted heavy rings around small chips.
+      ao += max(max(hIn - h0, hOut - h0), 0.0) * 0.35;
     }
 
     // Cast shadow: ONE shifted SDF eval instead of a 10-step march. A raised
@@ -366,6 +412,16 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
       let sh = (1.0 - smoothstep(-pen * 0.4, pen, ds)) * clamp(hBody - hRaw + 0.35, 0.0, 1.0);
       shOcc = max(shOcc, sh);
     }
+  }
+
+  // SCREEN: the visible picture joins `disp` BEFORE the emitter mask, so the
+  // screen suppresses its own re-lighting exactly like other emitters (and
+  // display stays decoupled from the emitted light).
+  if (U.screen.z > U.screen.x &&
+      p.x >= U.screen.x && p.y >= U.screen.y && p.x < U.screen.z && p.y < U.screen.w) {
+    let suv = (p - U.screen.xy) / (U.screen.zw - U.screen.xy);
+    let enc = textureSampleLevel(screenTex, samp, suv, 0.0).rgb;
+    disp += enc * enc * U.screenParams.y;
   }
 
   // One continuous material; tint lifts a component toward its own albedo.
@@ -394,7 +450,7 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // eye reads as texture.
   let rot = ign(devPx) * TAU;
   let joff = vec2<f32>(cos(rot), sin(rot)) * (8.0 / U.probeSpacing);
-  let probe = p / U.probeSpacing - vec2<f32>(0.5);
+  let probe = (p - U.probeOrigin) / U.probeSpacing - vec2<f32>(0.5);
   let a0 = (sampleCH(ch0, probe + joff) + sampleCH(ch0, probe - joff)) * 0.5;
   let a1 = (sampleCH(ch1, probe + joff) + sampleCH(ch1, probe - joff)) * 0.5;
   let b1 = (sampleCH(ch2, probe + joff) + sampleCH(ch2, probe - joff)) * 0.5;
@@ -408,7 +464,11 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // SUBTRACTS light and paints dark smudges at probe scale.
   let dir = max(a0 + (a1 * n2.x + b1 * n2.y) * 0.785398, vec3<f32>(0.0)); // π/4
   let hmask = smoothstep(0.0, 0.03, abs(hRaw));
-  let giMask = mix(U.giBackground, 1.0, max(cover, hmask));
+  // Matte apron REVEALS background GI near the shape (up to 0.5 vs the global
+  // cap) and the face/lip receive none — identical semantics to the raster
+  // engine's motivated-backlight treatment.
+  let bgGI = mix(U.giBackground, 0.5, matteSoft) * (1.0 - matteHard);
+  let giMask = mix(bgGI, 1.0, max(cover, hmask) * (1.0 - matteHard));
   let dispLum = max(disp.r, max(disp.g, disp.b));
   let emisMask = smoothstep(0.0, 0.1, dispLum);
   let giTerm = (flt + dir * U.giDirectional) * (U.giStrength * U.giProbeLift * giMask * (1.0 - emisMask));

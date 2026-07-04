@@ -149,7 +149,11 @@ fn sceneMaterial(p : vec2<f32>) -> Material {
     if (outsideShape(s, p)) { continue; }
     let d = shapeSD(s, p);
     let cov = 1.0 - smoothstep(0.0, G.edgeAA, d); // 1 inside, fades across edge
-    if (cov <= 0.0) { continue; }
+    // Matte shapes (tint packed < -0.5) keep contributing past their silhouette:
+    // they write a feathered suppression field over their bevel-wide apron so
+    // the composite's GI mask fades smoothly instead of cutting at the edge.
+    let matte = s.extra.y < -0.5;
+    if (cov <= 0.0 && !matte) { continue; }
 
     // bodyAlpha gates the *visible* body: a `bodyAlpha = 0` shape (a hidden
     // light) contributes no albedo/coverage/display but still emits & occludes,
@@ -165,7 +169,34 @@ fn sceneMaterial(p : vec2<f32>) -> Material {
     // emitter can pour light into the scene while staying visually subdued.
     m.emission = m.emission + s.emission.rgb * cov;
     m.display = m.display + s.emission.rgb * bcov * s.extra.x;
-    m.tint = mix(m.tint, s.extra.y, bcov); // painter's order, like albedo
+    if (matte) {
+      // Matte GI suppression as a smooth FIELD, not a binary flag. Two zones,
+      // both derived from the shape's own signed distance:
+      //   hard — 1 over the face and the whole bevel lip (exact outer height
+      //          extent, so no bright GI rim survives on the lip), with a 2px
+      //          exit ramp. The composite kills component-level GI by it.
+      //   soft — feathers from 1 at the lip to 0 across a bevel-wide apron.
+      //          The composite ramps the *background* GI back in by it, which
+      //          is what turns the old hard glow cutoff into a soft penumbra.
+      // Packed into the tint channel as -(hard + soft) - 2*tint*bcov: one
+      // float carries hard, soft, and the shape's real tint (decoded in
+      // composite.wgsl; non-matte tint stays >= 0 and decodes to zeros).
+      // The apron fits the AABB pad (bevel + edgeAA + 1.5) exactly.
+      let lip = s.params.w * 0.5 * (1.0 - G.edgeBias) + G.edgeAA;
+      let hard = 1.0 - smoothstep(lip, lip + 2.0, d);
+      // Penumbra width ~0.45 bevel (min 8px): wide enough to read soft, narrow
+      // enough that the halo still visibly hugs the bar. Fits the AABB pad.
+      let soft = 1.0 - smoothstep(lip, lip + max(s.params.w * 0.45, 8.0), d);
+      let v = -(hard + soft) - 2.0 * (s.extra.y + 2.0) * bcov;
+      // min, not painter-mix: matte fields combine to the MOST suppressive,
+      // order-independent — a small matte child's fading apron must never
+      // erode its matte parent's full suppression underneath (that read as a
+      // bright ring around the nav's segmented switcher). Non-matte children
+      // still reset the field via their own bcov mix below.
+      m.tint = min(m.tint, v);
+    } else {
+      m.tint = mix(m.tint, s.extra.y, bcov); // painter's order, like albedo
+    }
     m.opacity = max(m.opacity, s.albedo.a * cov);
   }
 

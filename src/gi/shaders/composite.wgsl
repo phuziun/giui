@@ -183,9 +183,19 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // per-shape tint (dispS.a) lifts the effective tint toward full albedo, so
   // inset elements can read truly dark regardless of the global tintAmount cap.
   let cover = clamp(alb.a, 0.0, 1.0);
-  // "Matte" components pack their tint as (tint - 2) → dispS.a < -0.5. Decode the
-  // real tint (add 2 back) so matte preserves the shape's normal tint appearance.
-  let realTint = select(dispS.a, dispS.a + 2.0, dispS.a < -0.5);
+  // Matte components pack a smooth suppression FIELD into the tint channel
+  // (scene.wgsl): a = -(hard + soft) - 2*tint*cover. Decode all three:
+  //   matteSoft — 1 over the face/lip, feathering to 0 across the bevel-wide
+  //               apron. Ramps the background GI down near a matte shape, so
+  //               the glow around it fades in as a soft penumbra instead of
+  //               cutting hard at a dilated silhouette (the old binary flag +
+  //               4-tap dilation read as a harsh bright rim hugging the bar).
+  //   matteHard — 1 over the face + entire bevel lip only. Kills component-
+  //               level GI there (no bright rim on the lip).
+  //   realTint  — the shape's normal tint, preserved (matte + tint:1 insets
+  //               like the segmented track still read dark).
+  // Non-matte tint stays in [0,1] and decodes to matteSoft = matteHard = 0.
+  let realTint = select(dispS.a, (-dispS.a - 2.0) * 0.5, dispS.a < -0.5);
   let effTint = mix(L.tintAmount, 1.0, clamp(realTint, 0.0, 1.0));
   let albedo = mix(L.material, alb.rgb, cover * effTint);
 
@@ -193,24 +203,13 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // the silhouette) so the raised/carved bevel slopes -- which extend past the
   // outline -- catch the bounce too, not only the flat interior.
   let hmask = smoothstep(0.0, 0.03, abs(nrm.w));
-  // A matte component receives NO GI bounce (a hidden emitter behind it lights
-  // everything AROUND it but never its own face). The matte flag lives in the
-  // tint channel, tied to COVERAGE — but the bevel LIP extends past coverage, so
-  // that thin lip would still catch a bright GI rim. Dilate the matte a few px
-  // (sample the tint channel around this pixel) so it swallows the bevel edge.
-  var matteFlag = select(0.0, 1.0, dispS.a < -0.5);
-  if (matteFlag < 0.5) {
-    let mo = 6.0 / L.resolution;
-    let a1 = textureSampleLevel(dispTex, samp, tc + vec2<f32>(mo.x, 0.0), 0.0).a;
-    let a2 = textureSampleLevel(dispTex, samp, tc - vec2<f32>(mo.x, 0.0), 0.0).a;
-    let a3 = textureSampleLevel(dispTex, samp, tc + vec2<f32>(0.0, mo.y), 0.0).a;
-    let a4 = textureSampleLevel(dispTex, samp, tc - vec2<f32>(0.0, mo.y), 0.0).a;
-    // Full matte if any nearby pixel is matte — swallows the bevel lip so it
-    // gets NO GI rim. (A partial "kiss" of bleed here read as too strong; the
-    // soft dim emitters already make the glow-to-bar transition gentle.)
-    matteFlag = select(0.0, 1.0, min(min(a1, a2), min(a3, a4)) < -0.5);
-  }
-  let giMask = mix(L.extra.z, 1.0, max(cover, hmask)) * (1.0 - matteFlag);
+  let matteSoft = clamp(-dispS.a, 0.0, 1.0);
+  let matteHard = clamp(-dispS.a - 1.0, 0.0, 1.0);
+  // Penumbra strength capped at 0.85: a whisper of background GI reaches the
+  // lip, so the halo still visibly hugs a matte bar AND the value is identical
+  // on both sides of the lip (no residual step) — the face's share is a
+  // negligible extra.z * 0.15.
+  let giMask = mix(L.extra.z * (1.0 - matteSoft * 0.85), 1.0, max(cover, hmask) * (1.0 - matteHard));
 
   // An emitter's own *visible* body shows its colour + display glow and should
   // not be re-lit by the bounce of its own emission, so suppress the GI there.

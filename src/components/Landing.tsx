@@ -214,7 +214,7 @@ function makeCrtTiles() {
   return { scan: scan.toDataURL(), noise: noise.toDataURL() };
 }
 
-function FluidHero({ children }: { children?: React.ReactNode }) {
+function FluidHero({ video, children }: { video?: HTMLVideoElement | null; children?: React.ReactNode }) {
   const mkCanvas = () => {
     const c = document.createElement("canvas");
     c.width = SCREEN_TEX_W;
@@ -236,6 +236,13 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
   // decoupled from emit, so the screen itself stays bright (3.7) while its cast
   // light keeps dropping.
   const screenRef = useGIScreen(out, { emit: 0.15, display: 3.7, topFade: 0.7, topFadeH: 0.45 });
+  // Video-as-light (Studio → "Hero source"): when set, the tick draws the
+  // current video frame into `src` instead of running the fluid sim — the
+  // whole downstream pipeline (wordmark amplifier, hum, RGB split, GI screen)
+  // is source-agnostic, so the video literally plays as light. Ref-held so a
+  // swap doesn't re-init the sim state.
+  const videoRef = useRef<HTMLVideoElement | null | undefined>(video);
+  videoRef.current = video;
 
   // Paint the fluid source (~30Hz): faded trails + blurred additive gradients.
   useEffect(() => {
@@ -320,6 +327,20 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
       // slowly, so the scene shows a few related hues at once and cycles through
       // the whole warm–cool range over ~time.
       const hueWin = (t * 0.018) % 1; // window centre slides along the arc
+      const vid = videoRef.current;
+      if (vid && vid.readyState >= 2 && vid.videoWidth > 0) {
+        // Video mode: the frame fully overwrites `src` (no trails — a full
+        // overwrite also means the RGB split below can't compound). Cover-fit
+        // crop so any aspect fills the 4:1 texture.
+        const va = vid.videoWidth / vid.videoHeight;
+        const ta = W / H;
+        let sw = vid.videoWidth, sh = vid.videoHeight, sx = 0, sy = 0;
+        if (va > ta) { sw = vid.videoHeight * ta; sx = (vid.videoWidth - sw) / 2; }
+        else { sh = vid.videoWidth / ta; sy = (vid.videoHeight - sh) / 2; }
+        ctx.filter = "none";
+        ctx.globalCompositeOperation = "source-over";
+        ctx.drawImage(vid, sx, sy, sw, sh, 0, 0, W, H);
+      } else {
       // Slow fade = long luminous trails (safe post-sRGB-fix: the linearized
       // floor stays black instead of washing grey).
       ctx.filter = "none";
@@ -354,6 +375,7 @@ function FluidHero({ children }: { children?: React.ReactNode }) {
       });
       ctx.filter = "none";
       ctx.globalCompositeOperation = "source-over";
+      } // end fluid-vs-video source
 
       // ---- Presented frame: composite `src` (pure fluid) into `out`, then add
       // the light-amplifying wordmark + RGB split. `out` is rebuilt from scratch
@@ -654,7 +676,7 @@ export function NavGlow() {
   );
 }
 
-export function Landing() {
+export function Landing({ heroVideo }: { heroVideo?: HTMLVideoElement | null }) {
   const { accent } = useGITheme();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
@@ -662,7 +684,7 @@ export function Landing() {
           it, plus the draggable light swimming in the same fluid. */}
       {/* The band IS the hero: the wordmark is painted into the projection
           itself (see FluidHero's frame loop). */}
-      <FluidHero />
+      <FluidHero video={heroVideo} />
 
       {/* Why */}
       <section style={{ display: "flex", gap: 30, flexWrap: "wrap" }}>

@@ -258,10 +258,14 @@ function Studio({
   current,
   lights,
   set,
+  heroVideo,
+  setHeroVideo,
 }: {
   current: Dict;
   lights: Pos[];
   set: (v: Dict) => void;
+  heroVideo: HTMLVideoElement | null;
+  setHeroVideo: (v: HTMLVideoElement | null) => void;
 }) {
   const { accent } = useGITheme();
   const [presets, setPresets] = useState<Record<string, Dict>>(() =>
@@ -293,6 +297,42 @@ function Studio({
     }
     location.reload();
   };
+  // Hero source: feed a local video's frames into the home hero SCREEN — the
+  // video literally plays as light (wordmark amplifier + analog finish and the
+  // GI emission all read the same frames). Local file → object URL, so the
+  // canvas never taints (a remote URL without CORS would).
+  const pickVideo = () => {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = "video/*";
+    inp.onchange = () => {
+      const f = inp.files?.[0];
+      if (!f) return;
+      const v = document.createElement("video");
+      v.muted = true;
+      v.loop = true;
+      v.playsInline = true;
+      v.src = URL.createObjectURL(f);
+      v.play().then(
+        () => {
+          if (heroVideo) URL.revokeObjectURL(heroVideo.src);
+          setHeroVideo(v);
+          toast({ title: "Video loaded", message: "The Home hero now plays it as light." });
+        },
+        () => toast({ title: "Couldn't play that file", message: "Try an mp4/webm the browser supports." })
+      );
+    };
+    inp.click();
+  };
+  const clearVideo = () => {
+    if (heroVideo) {
+      heroVideo.pause();
+      URL.revokeObjectURL(heroVideo.src);
+    }
+    setHeroVideo(null);
+    toast("Hero back to the fluid sim");
+  };
+
   // Export the whole current state (settings + light positions) so it can be
   // pasted back and baked in as the code defaults.
   const copy = () => {
@@ -338,6 +378,21 @@ function Studio({
         <p className="muted" style={{ marginTop: 16 }}>
           Click a preset to load it. “Copy JSON” exports the full state — settings and light
           positions — so a dialed-in look can be baked into the code defaults.
+        </p>
+      </Surface>
+      <Surface style={{ padding: 24, maxWidth: 620 }} radius={12}>
+        <div className="card-title">Hero source</div>
+        <div className="row">
+          <GIButton accent={heroVideo ? undefined : accent} onClick={clearVideo}>
+            Fluid sim
+          </GIButton>
+          <GIButton accent={heroVideo ? accent : undefined} onClick={pickVideo}>
+            Video…
+          </GIButton>
+        </div>
+        <p className="muted" style={{ marginTop: 12 }}>
+          Pick a local video and the Home hero projects it as light — the wordmark amplifier,
+          analog finish, and the GI emission all read the same frames.
         </p>
       </Surface>
       {/* Live preview: representative material + emitter cases, so every
@@ -505,6 +560,10 @@ export default function App() {
   const moveLight = (i: number, p: Pos) =>
     setLightPos((prev) => prev.map((q, j) => (j === i ? p : q)));
 
+  // Hero source: null = fluid sim; a <video> = its frames play as light on
+  // the Home hero (picked in Studio, survives route changes).
+  const [heroVideo, setHeroVideo] = useState<HTMLVideoElement | null>(null);
+
   // Persist settings + light positions together so a reload restores everything.
   useEffect(() => {
     saveJSON(LAST_KEY, { version: SCHEMA_VERSION, values: v, lights: lightPos });
@@ -564,7 +623,7 @@ export default function App() {
             </Surface>
           </div>
 
-          {page === "home" && <Landing />}
+          {page === "home" && <Landing heroVideo={heroVideo} />}
 
           {page === "components" && (
             <>
@@ -581,7 +640,7 @@ export default function App() {
           {page === "examples" && <Templates />}
 
           {page === "studio" && (
-            <Studio current={v as Dict} lights={lightPos} set={set as (v: Dict) => void} />
+            <Studio current={v as Dict} lights={lightPos} set={set as (v: Dict) => void} heroVideo={heroVideo} setHeroVideo={setHeroVideo} />
           )}
         </div>
 

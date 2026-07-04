@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -716,18 +717,21 @@ function GIMenuRow({
   selected,
   accent,
   onPick,
+  highlighted = false,
 }: {
   label: string;
   selected: boolean;
   accent: Vec3;
   onPick: (v: string) => void;
+  /** Keyboard roving highlight — reads like hover. */
+  highlighted?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-  const active = hover || selected;
+  const active = hover || selected || highlighted;
   const ref = useGIShape({
     albedo: active ? accent : SURFACE_ALBEDO,
     tint: active ? 1 : 0,
-    emission: active ? scale(accent, hover ? 0.5 : 0.32) : [0, 0, 0],
+    emission: active ? scale(accent, hover || highlighted ? 0.5 : 0.32) : [0, 0, 0],
     displayScale: 6,
     height: 0.25,
     bevel: 4,
@@ -772,9 +776,11 @@ export function GISelect({
   const [open, setOpen] = useState(defaultOpen);
   const [sel, setSel] = useState(value ?? options[0]);
   const [hover, setHover] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [hi, setHi] = useState(-1); // keyboard roving highlight
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
-  const active = open || hover;
+  const active = open || hover || focus;
   const ref = useGIShape({
     albedo: INSET_ALBEDO,
     tint: 1,
@@ -800,12 +806,38 @@ export function GISelect({
     onChange?.(v);
     setOpen(false);
   };
+  const openWithHighlight = () => {
+    setHi(Math.max(0, options.indexOf(sel ?? "")));
+    setOpen(true);
+  };
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (!open) {
+      if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        openWithHighlight();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setHi((h) => Math.min(options.length - 1, h + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHi((h) => Math.max(0, h - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setHi(0); }
+    else if (e.key === "End") { e.preventDefault(); setHi(options.length - 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (hi >= 0) pick(options[hi]); }
+    else if (e.key === "Escape") { e.preventDefault(); setOpen(false); }
+    else if (e.key === "Tab") setOpen(false);
+  };
 
   return (
     <div ref={wrapRef} style={{ position: "relative", width }}>
       <div
         ref={ref as React.RefObject<HTMLDivElement>}
-        onClick={() => setOpen((o) => !o)}
+        role="combobox"
+        aria-expanded={open}
+        tabIndex={0}
+        onClick={() => (open ? setOpen(false) : openWithHighlight())}
+        onKeyDown={onKey}
+        onFocus={() => setFocus(true)}
+        onBlur={() => setFocus(false)}
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
         style={{
@@ -819,6 +851,7 @@ export function GISelect({
           color: "rgba(206,216,236,0.9)",
           cursor: "pointer",
           pointerEvents: "auto",
+          outline: "none",
         }}
       >
         <span>{sel}</span>
@@ -827,8 +860,8 @@ export function GISelect({
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, width, zIndex: 30, borderRadius: 9, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
           <Surface style={{ padding: 5 }} radius={9} heightScale={1.2} layer={1}>
-            {options.map((o) => (
-              <GIMenuRow key={o} label={o} selected={o === sel} accent={accent} onPick={pick} />
+            {options.map((o, i) => (
+              <GIMenuRow key={o} label={o} selected={o === sel} highlighted={i === hi} accent={accent} onPick={pick} />
             ))}
           </Surface>
         </div>
@@ -1705,6 +1738,7 @@ export function GICombobox({
   const accent = useAccent(accentProp);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [hi, setHi] = useState(0); // roving highlight; first match by default so Enter picks it
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const fieldRef = useGIShape({
     albedo: INSET_ALBEDO,
@@ -1725,10 +1759,29 @@ export function GICombobox({
   }, [open]);
   const q = query.trim().toLowerCase();
   const filtered = options.filter((o) => o.toLowerCase().includes(q)).slice(0, 6);
+  const hiClamped = Math.min(hi, filtered.length - 1); // filter can shrink under the highlight
   const pick = (v: string) => {
     setQuery(v);
     onChange?.(v);
     setOpen(false);
+  };
+  const onKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!open) setOpen(true);
+      else setHi(Math.min(filtered.length - 1, hiClamped + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHi(Math.max(0, hiClamped - 1));
+    } else if (e.key === "Enter") {
+      if (open && filtered.length > 0 && hiClamped >= 0) {
+        e.preventDefault();
+        pick(filtered[hiClamped]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    } else if (e.key === "Tab") setOpen(false);
   };
   return (
     <div ref={wrapRef} style={{ position: "relative", width }}>
@@ -1736,11 +1789,16 @@ export function GICombobox({
         <input
           value={query}
           placeholder={placeholder}
+          role="combobox"
+          aria-expanded={open}
+          aria-autocomplete="list"
           onChange={(e) => {
             setQuery(e.target.value);
+            setHi(0);
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
+          onKeyDown={onKey}
           className="gi-field"
           style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 5, fontSize: 13, fontFamily: "inherit", color: "rgba(210,220,238,0.92)", background: "transparent", border: "none", outline: "none", pointerEvents: "auto" }}
         />
@@ -1748,8 +1806,8 @@ export function GICombobox({
       {open && filtered.length > 0 && (
         <div style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, width, zIndex: 30, borderRadius: 9, backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)" }}>
           <Surface style={{ padding: 5 }} radius={9} heightScale={1.2} layer={1}>
-            {filtered.map((o) => (
-              <GIMenuRow key={o} label={o} selected={o === query} accent={accent} onPick={pick} />
+            {filtered.map((o, i) => (
+              <GIMenuRow key={o} label={o} selected={o === query} highlighted={i === hiClamped} accent={accent} onPick={pick} />
             ))}
           </Surface>
         </div>

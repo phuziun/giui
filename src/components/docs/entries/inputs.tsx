@@ -120,7 +120,7 @@ const [name, setName] = useState("");
     name: "Select",
     group: "Inputs",
     intro:
-      "A carved field that opens a lit dropdown of options. The menu panel paints over the content below it and closes on outside click.",
+      "A carved field that opens a lit dropdown of options. The menu panel paints over the content below it and closes on outside click. Fully keyboard-driven: Tab to focus, Enter/Space or arrows to open, arrows/Home/End to move the glowing highlight, Enter to pick, Esc to close.",
     examples: [
       {
         title: "Select",
@@ -142,7 +142,8 @@ const [name, setName] = useState("");
     slug: "combobox",
     name: "Combobox",
     group: "Inputs",
-    intro: "A searchable select: type to filter, pick to fill. Case-insensitive, shows the top matches.",
+    intro:
+      "A searchable select: type to filter, pick to fill. Case-insensitive, shows the top matches. The first match is highlighted so Enter picks it immediately; arrows move the highlight, Esc closes.",
     examples: [
       {
         title: "Combobox",

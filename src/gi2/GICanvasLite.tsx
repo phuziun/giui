@@ -82,6 +82,7 @@ export function GICanvasLite({
   onGPUInfoRef.current = onGPUInfo;
   const [gen, setGen] = useState(0);
   const lostInfo = useRef({ count: 0, at: 0 });
+  const renderCount = useRef(0);
 
   const setShape = useRef((id: string, shape: Shape | null) => {
     const changed = shape ? sceneRef.current.set(id, shape) : sceneRef.current.remove(id);
@@ -110,6 +111,7 @@ export function GICanvasLite({
     let lastInteraction = performance.now();
     let lastRender = 0;
     let lastTop = -1;
+    let beaconTimer = 0;
 
     const applySize = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -154,9 +156,44 @@ export function GICanvasLite({
           return;
         }
         onGPUInfoRef.current?.({ gpuName: ctx.gpuName, softwareGPU: ctx.softwareGPU });
+        (window as unknown as {
+          __giInit?: { deviceMs: number; pipelineMs: number; gpu: string; software: boolean; engine: string };
+        }).__giInit = {
+          deviceMs: 0,
+          pipelineMs: Math.round(renderer.pipelineMs),
+          gpu: ctx.gpuName,
+          software: ctx.softwareGPU,
+          engine: "lite",
+        };
         applySize();
         setStatus("ok");
         needsRender.current = true;
+
+        // Minimal dev beacon (same diagSink as the main engine, tagged lite) —
+        // lets headless/Safari runs report without devtools. Stops on the
+        // first non-ok response, like the main beacon.
+        if (import.meta.env.DEV) {
+          let renders0 = 0;
+          const send = () => {
+            fetch("/__giui-diag", {
+              method: "POST",
+              body: JSON.stringify({
+                t: new Date().toISOString().slice(11, 19),
+                engine: "lite",
+                gpu: ctx.gpuName,
+                renders: renderCount.current,
+                dRenders: renderCount.current - renders0,
+                win: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
+              }),
+            })
+              .then((res) => {
+                if (!res.ok) window.clearInterval(beaconTimer);
+              })
+              .catch(() => window.clearInterval(beaconTimer));
+            renders0 = renderCount.current;
+          };
+          beaconTimer = window.setInterval(send, 4000);
+        }
 
         onScroll = () => {
           needsRender.current = true;
@@ -215,6 +252,7 @@ export function GICanvasLite({
           // Commit the window position in the same task as the frame.
           canvas.style.transform = `translate3d(0, ${top}px, 0)`;
           renderer!.render(sceneRef.current, mapParams(paramsRef.current), cssW, cssH, dpr, top, screen);
+          renderCount.current++;
           canvas.style.opacity = "1";
         };
         raf = requestAnimationFrame(loop);
@@ -234,6 +272,7 @@ export function GICanvasLite({
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      if (beaconTimer) window.clearInterval(beaconTimer);
       ro.disconnect();
       renderer?.destroy();
       gpuDevice?.destroy();

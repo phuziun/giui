@@ -184,9 +184,14 @@ function useStudio() {
     ),
   }));
 
+  // ?engine=lite|cascade overrides the Studio engine (easy A/B from a phone).
+  const urlEngine = useMemo(() => {
+    const e = new URLSearchParams(location.search).get("engine");
+    return e === "lite" || e === "cascade" ? e : null;
+  }, []);
   const params: GIParams = useMemo(
     () => ({
-      engine: v.engine as GIParams["engine"],
+      engine: (urlEngine ?? v.engine) as GIParams["engine"],
       renderScale: v.renderScale,
       maxResolution: v.maxResolution,
       adaptiveQuality: v.adaptiveQuality,
@@ -547,8 +552,34 @@ function parseRoute(hash: string): string {
   return ROUTES.includes(r.split("/")[0]) ? r : "home";
 }
 
+// On-device diagnostics (?giDebug): a big readable chip for phones, where
+// devtools aren't handy — WebGPU availability, adapter, engine, init timing,
+// and any lighting-layer error. Ask a user to screenshot THIS.
+function GIDebugChip({ engine, err }: { engine: string; err: string }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setTick((x) => x + 1), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  void tick;
+  const init = (window as unknown as { __giInit?: { deviceMs: number; pipelineMs: number; gpu: string; software: boolean } }).__giInit;
+  const hasGPU = typeof navigator !== "undefined" && "gpu" in navigator;
+  return (
+    <div style={{ position: "fixed", left: 8, top: 8, zIndex: 999, padding: "10px 12px", borderRadius: 8, background: "rgba(8,10,16,0.92)", color: "#9fe8b0", fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12, lineHeight: 1.5, maxWidth: 320, pointerEvents: "none", whiteSpace: "pre-wrap" }}>
+      {`giDebug
+webgpu: ${hasGPU ? "yes" : "NO (navigator.gpu missing)"}
+engine: ${engine}
+init: ${init ? `ok — ${init.gpu}${init.software ? " (SOFTWARE)" : ""}, dev ${init.deviceMs}ms, pipe ${init.pipelineMs}ms` : "(not initialized)"}
+error: ${err || "none"}
+ua: ${navigator.userAgent.slice(0, 80)}`}
+    </div>
+  );
+}
+
 export default function App() {
   const { params, lights, v, set } = useStudio();
+  const giDebug = useMemo(() => new URLSearchParams(location.search).has("giDebug"), []);
+  const [giErr, setGiErr] = useState("");
   const accentVec = hexToLinear(v.accent as string);
 
   // Light positions are owned here so they can be persisted (and exported) with
@@ -597,7 +628,9 @@ export default function App() {
         params={params}
         theme={{ accent: accentVec }}
         showPerf={(v.showPerf as boolean) && page === "studio"}
+        onError={setGiErr}
       >
+        {giDebug && <GIDebugChip engine={params.engine} err={giErr} />}
         <div className="layout">
           {/* The nav is built from the kit itself: a raised lit bar and the
               segmented control's glowing thumb as the route indicator. Off the

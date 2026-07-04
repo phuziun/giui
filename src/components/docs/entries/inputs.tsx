@@ -19,7 +19,7 @@ export const INPUTS: DocEntry[] = [
     name: "Button",
     group: "Inputs",
     intro:
-      "A raised chip that physically presses into the surface while held. With an accent it becomes a deep-colour chip that pours accent light into the scene — dim at rest, brighter on hover; without one it stays a neutral control.",
+      "A raised chip that physically presses into the surface while held. With an accent it becomes a deep-colour chip that pours accent light into the scene — dim at rest, brighter on hover (the glow eases in rather than snapping); without one it stays a neutral control. glow scales this instance\u2019s emission; displayScale controls how much shows on its own face.",
     examples: [
       {
         title: "Accented and neutral",

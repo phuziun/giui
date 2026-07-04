@@ -109,12 +109,18 @@ export function GIButton({
   onClick,
   accent,
   radius = 5,
+  glow: glowScale = 1,
+  displayScale,
   style,
 }: {
   children?: ReactNode;
   onClick?: () => void;
   accent?: Vec3; // optional subtle emissive tint
   radius?: number;
+  /** Per-instance multiplier on this button's emission (1 = kit default). */
+  glow?: number;
+  /** Override how much of the emission shows on the button's own face. */
+  displayScale?: number;
   style?: CSSProperties;
 }) {
   const [hover, setHover] = useState(false);
@@ -124,7 +130,7 @@ export function GIButton({
   // colour that radiates light, the scene's local light sources. The emission
   // both blooms on the button and bounces (via the cascades) onto neighbours.
   // Subdued deep-blue chip at rest; the old resting brightness now lives on hover.
-  const glow = accent ? (down ? 1.0 : hover ? 1.4 : 0.5) : 0;
+  const glow = (accent ? (down ? 1.0 : hover ? 1.4 : 0.5) : 0) * glowScale;
   const a = accent ?? [0, 0, 0];
   const emission: Vec3 = [a[0] * glow, a[1] * glow, a[2] * glow];
   // The chip's albedo is a deep version of its glow colour (tint: 1 so it shows
@@ -139,10 +145,11 @@ export function GIButton({
     tint: accent ? 1 : 0,
     // Pour the emission into the bounce, but only show a little of it on the
     // button itself -- a deep-blue chip with a hint of glow, not a light bulb.
-    displayScale: accent ? 0.3 : 1,
+    displayScale: displayScale ?? (accent ? 0.3 : 1),
     height: down ? -0.5 : 1, // press carves in
     bevel: 9,
     cornerRadius: radius,
+    tween: 150, // hover/press glow eases instead of snapping
   });
 
   return (
@@ -185,6 +192,7 @@ export function GIField({
   accent: accentProp,
   value,
   onChange,
+  glow = 1,
 }: {
   placeholder?: string;
   style?: CSSProperties;
@@ -192,13 +200,15 @@ export function GIField({
   /** Controlled value (omit for an uncontrolled input). */
   value?: string;
   onChange?: (v: string) => void;
+  /** Per-instance multiplier on the focus/hover glow (1 = kit default). */
+  glow?: number;
 }) {
   const accent = useAccent(accentProp);
   const [focus, setFocus] = useState(false);
   const [hover, setHover] = useState(false);
   // Responsive on select: a clear accent glow + slight lift on focus, a hint on hover.
   const active = focus ? 1 : hover ? 0.35 : 0;
-  const e = active * 0.16;
+  const e = active * 0.16 * glow;
   const ref = useGIShape({
     albedo: INSET_ALBEDO,
     tint: 1, // full dark albedo, ignoring the global tint cap
@@ -207,6 +217,7 @@ export function GIField({
     height: -0.4 + active * 0.12, // lifts a touch toward flush when focused
     bevel: 4,
     cornerRadius: 5,
+    tween: 180, // focus/hover glow eases in and out
   });
   return (
     <input
@@ -789,6 +800,7 @@ export function GISelect({
     height: -0.4,
     bevel: 4,
     cornerRadius: 5,
+    tween: 180,
   });
 
   // Close when clicking outside the control.
@@ -896,6 +908,7 @@ export function GITextarea({
     height: -0.4 + active * 0.12,
     bevel: 4,
     cornerRadius: 6,
+    tween: 180,
   });
   return (
     <textarea
@@ -1748,6 +1761,7 @@ export function GICombobox({
     height: -0.4,
     bevel: 4,
     cornerRadius: 5,
+    tween: 180,
   });
   useEffect(() => {
     if (!open) return;

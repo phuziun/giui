@@ -17,6 +17,10 @@ export type GIShapeProps = {
   cornerRadius?: number; // overrides the element's computed border-radius
   /** Re-measure every frame (for dragged / animated elements). */
   live?: boolean;
+  /** Ease emission changes over this many ms (~time to ≈95%) instead of
+   *  snapping — hover/focus glows fade in and out. Runs a rAF loop only
+   *  while a transition is in flight; 0/omitted = instant. */
+  tween?: number;
   /** Opt out of the global `componentGlow` master (e.g. a standalone light). */
   rawGlow?: boolean;
   /** Paint priority: higher paints over lower regardless of area. Overlays
@@ -46,6 +50,10 @@ export function useGIShape(props: GIShapeProps) {
   const elRef = useRef<HTMLElement | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
+  // Tween state: the emission actually written (eased toward the target).
+  const emiCur = useRef<[number, number, number] | null>(null);
+  const tweenRaf = useRef(0);
+  const tweenLast = useRef(0);
 
   const measure = useCallback(() => {
     const el = elRef.current;
@@ -65,7 +73,47 @@ export function useGIShape(props: GIShapeProps) {
     // standalone light opts out via rawGlow so it keeps its own intensity.
     const glow = p.rawGlow ? 1 : componentGlow;
     const e = p.emission ?? DEFAULTS.emission;
-    const emission: [number, number, number] = [e[0] * glow, e[1] * glow, e[2] * glow];
+    const target: [number, number, number] = [e[0] * glow, e[1] * glow, e[2] * glow];
+
+    // With a tween, write the EASED emission and chase the target in a rAF
+    // loop that lives only for the transition (first mount snaps — a page
+    // shouldn't fade its glows in).
+    let emission = target;
+    if ((p.tween ?? 0) > 0 && emiCur.current) {
+      emission = emiCur.current;
+      const d = Math.max(
+        Math.abs(target[0] - emission[0]),
+        Math.abs(target[1] - emission[1]),
+        Math.abs(target[2] - emission[2])
+      );
+      if (d > 1e-4 && !tweenRaf.current) {
+        tweenLast.current = performance.now();
+        const step = (now: number) => {
+          const pp = propsRef.current;
+          const g2 = pp.rawGlow ? 1 : componentGlow;
+          const e2 = pp.emission ?? DEFAULTS.emission;
+          const tgt: [number, number, number] = [e2[0] * g2, e2[1] * g2, e2[2] * g2];
+          const cur = emiCur.current!;
+          const dt = Math.min(64, now - tweenLast.current);
+          tweenLast.current = now;
+          // exponential ease; tau = tween/3 → ~95% there after `tween` ms
+          const k = 1 - Math.exp(-dt / Math.max(1, (pp.tween ?? 0) / 3));
+          const next: [number, number, number] = [
+            cur[0] + (tgt[0] - cur[0]) * k,
+            cur[1] + (tgt[1] - cur[1]) * k,
+            cur[2] + (tgt[2] - cur[2]) * k,
+          ];
+          const dd = Math.max(Math.abs(tgt[0] - next[0]), Math.abs(tgt[1] - next[1]), Math.abs(tgt[2] - next[2]));
+          emiCur.current = dd < 1e-4 ? tgt : next;
+          // tweenRaf stays non-zero through this measure() so the re-entrant
+          // tween check can't spawn a second loop.
+          measure(); // re-registers the shape with the eased emission
+          tweenRaf.current = dd >= 1e-4 ? requestAnimationFrame(step) : 0;
+        };
+        tweenRaf.current = requestAnimationFrame(step);
+      }
+    }
+    emiCur.current = emission;
 
     const shape: Shape = {
       kind: p.kind ?? "roundRect",
@@ -126,8 +174,15 @@ export function useGIShape(props: GIShapeProps) {
     return () => cancelAnimationFrame(raf);
   }, [props.live, measure]);
 
-  // Remove from the scene on unmount.
-  useEffect(() => () => setShape(id, null), [id, setShape]);
+  // Remove from the scene on unmount (and stop any in-flight tween).
+  useEffect(
+    () => () => {
+      if (tweenRaf.current) cancelAnimationFrame(tweenRaf.current);
+      tweenRaf.current = 0;
+      setShape(id, null);
+    },
+    [id, setShape]
+  );
 
   return elRef;
 }

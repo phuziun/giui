@@ -681,12 +681,26 @@ the same three recipes: carved well / raised chip / emissive accent):
     `LogoDot` dimple, no glow) since FluidHero owns the one screen slot.
   - **`matte` FEATURE (useGIShape/`Surface`/`GISegmented`)**: a component that
     receives NO GI bounce (its face isn't lit by nearby emitters/bounce; only
-    key/fill/ambient shade it). Encoding: matte packs `tint - 2` into the tint
-    channel (dispTex.a); the composite decodes `dispS.a < -0.5` → `matteFlag`,
-    real tint `= dispS.a + 2` (so matte preserves the shape's normal tint), and
-    `giMask *= (1 - matteFlag)`. No new uniform/target — reuses the tint channel.
-    Used for the nav bar + tab switcher over the backlight; reusable anywhere you
-    want "light behind, none on the object".
+    key/fill/ambient shade it). **REWORKED 2026-07-04 (owner: "harsh edge on the
+    titlebar")**: the old binary flag (+ 4-tap 6px dilation in composite) made
+    the backlight halo cut off as a hard bright rim hugging the bar. Now the
+    SCENE pass writes a smooth suppression FIELD into the tint channel per
+    matte shape, derived from its SDF distance: `hard` = 1 over face + entire
+    bevel lip (kills component-level GI, no lip rim), `soft` = feathers 1→0
+    over a `max(bevel*0.45, 8px)` penumbra beyond the lip. Packed as
+    `-(hard + soft) - 2*tint*bcov` (face = -2-2tint keeps real tint for
+    matte+tint:1 insets like the segmented track); fields combine via **min()**
+    (order-independent — painter-mix let the segmented's fading apron ERODE the
+    bar's suppression under it → bright ring, first-attempt bug). Composite:
+    `matteSoft = clamp(-a,0,1)`, `matteHard = clamp(-a-1,0,1)`, realTint =
+    `(-a-2)/2` when `a < -0.5`; `giMask = mix(giBackground*(1 - matteSoft*0.85),
+    1, max(cover,hmask)*(1-matteHard))`. The **0.85 cap** lets a whisper of halo
+    reach the lip → the value is identical on both sides of the lip (no step)
+    and the glow visibly hugs the bar (uncapped full-bevel feather read as a
+    dark MOAT that muted the backlight — tuned at a bright hue phase). The
+    4 dilation taps are GONE from composite (cheaper); the apron fits the
+    existing AABB pad. Non-matte shapes: tint ∈ [0,1] decodes to zeros,
+    behavior identical. Perf verified: forced-full-render p50 8.4ms @119fps.
 - **Site structure**: a tiny hash router in `App.tsx` (`#/`, `#/components`, `#/templates`;
   `parseRoute`/`ROUTES`) with a `.topnav` (wordmark + **controlled `GITabs`** — `index`/
   `onChange` props added for exactly this). Routes: **Landing** (`src/components/Landing.tsx`
@@ -784,6 +798,40 @@ the shape; `live:true` re-measures every frame (dragged/animated elements); `lay
    (`encodeSrgb`). Don't double-encode.
 
 ---
+
+## Adoption-readiness pass (2026-07-04, owner: "review as a customer")
+
+An audit + fixes so an adopting engineer doesn't hit sharp edges:
+- **Dev diag beacon** stops after the first non-ok response — a consumer
+  vendoring the source into their own vite app (no `diagSink` middleware) no
+  longer gets `POST /__giui-diag` every 4s in their network tab. The 1.5s kick
+  `setTimeout` is stored + cleared on unmount.
+- **StrictMode leak fixed**: the aborted first mount now `device.destroy()`s at
+  the `disposed` checks (device was orphaned before — one leaked GPUDevice per
+  dev mount); normal unmount also destroys the device deterministically.
+- **GPU device-loss recovery** (`GIContext`): `device.lost` (reason ≠
+  "destroyed") bumps a `gen` state that re-runs the whole init effect — scene
+  survives in React state so lighting recovers in place. >3 losses within
+  rolling 30s windows → gives up, corner notice + `onError`.
+- **`onError` prop** on GIProvider/GICanvas (lighting-layer failures; UI keeps
+  working unlit). The error overlay is now a compact NON-BLOCKING corner chip
+  with inline styles — the old `.gi-error` was a full-page `inset:0` veil
+  without pointer-events:none, i.e. it click-blocked the perfectly usable
+  unlit UI on Firefox (removed from index.css).
+- **Kit CSS is library-owned**: `src/components/components.css` (gi-field
+  placeholders, gi-spin/gi-dot-pulse/gi-progress-sweep keyframes + reduced-
+  motion) imported by `components/index.tsx` — vendored copies work without
+  the demo stylesheet. index.css is demo-only now.
+- **leva → devDependencies** (demo-only; library code imports only react).
+- **README rewritten MUI-style** (correct GIProvider API — it documented the
+  defunct GICanvas/GILight-`initial` API; browser table + fallback story;
+  vendoring install path; quality presets; engine-automatic vs consumer-
+  controlled perf; 41-component catalogue; useGIShape guide; troubleshooting).
+- Known remaining blockers for "npm install giui" adoption (documented in
+  README, roadmap below): no exports map / lib build (`private:true`), and the
+  engine is Vite-only (`?raw` WGSL imports, `import.meta.env`) — Next.js needs
+  raw-loader config. Audit rated everything else (cleanup, listeners, graceful
+  no-WebGPU path) solid.
 
 ## Current state (where this session ended — updated 2026-07-04)
 

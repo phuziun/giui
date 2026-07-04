@@ -83,7 +83,7 @@ export type GIParams = {
   shadowLength: number; // px
   shadowHeight: number; // px per unit of height (smaller => longer shadows)
   shadowSoftness: number; // penumbra growth with distance
-  debugMode: number; // 0 final, 1 albedo, 2 normal, 3 emissive, 4 irradiance
+  debugMode: number; // 0 final, 1 albedo, 2 normal, 3 emissive, 4 irradiance, 5 height, 6 shadow, 7 AO, 8 occlusion
 };
 
 // Defaults baked from the dialed-in "preset1": a calm, moody look — low

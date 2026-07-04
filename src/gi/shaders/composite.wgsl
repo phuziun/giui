@@ -168,7 +168,8 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
 
   let alb = textureSampleLevel(albedoTex, samp, tc, 0.0);
   let nrm = textureSampleLevel(normalTex, samp, tc, 0.0);
-  let emis = textureSampleLevel(sceneTex, samp, tc, 0.0).rgb;   // GI emission
+  let scn = textureSampleLevel(sceneTex, samp, tc, 0.0);
+  let emis = scn.rgb;                                           // GI emission (a = occlusion)
   let dispS = textureSampleLevel(dispTex, samp, tc, 0.0);
   let disp = dispS.rgb;                                         // surface display emissive
   var N = normalize(vec3<f32>(nrm.xy * L.normalStrength, max(nrm.z, 1e-3)));
@@ -252,7 +253,27 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   // still pouring blue light onto its neighbours.
   var color = albedo * (lit * (1.0 - ao)) + giTerm * (1.0 - ao) + disp * L.emissiveDisplay;
 
-  if (L.debugMode > 3.5) {
+  // Debug views. 1-4 are G-buffer/GI channels; 5-8 isolate the shading terms
+  // that darken the scene (depth, cast shadow, AO, cascade occlusion) — hard
+  // to judge when composited, obvious in isolation.
+  if (L.debugMode > 7.5) {
+    // Occlusion: how strongly this pixel blocks light in the cascades
+    // (sceneTex.a — shapes' `opacity`). White = full occluder.
+    color = vec3<f32>(scn.a);
+  } else if (L.debugMode > 6.5) {
+    // Contact AO term (shown as the darkening actually applied: 1 - ao).
+    color = vec3<f32>(1.0 - ao);
+  } else if (L.debugMode > 5.5) {
+    // Cast-shadow gate on the key light (height-field march): white = fully
+    // lit by the key, dark = in a cast shadow.
+    color = vec3<f32>(ksh);
+  } else if (L.debugMode > 4.5) {
+    // Height/depth field: raised reads warm, carved reads blue, flat black.
+    let h = nrm.w;
+    color = select(vec3<f32>(0.15, 0.35, 1.0) * (-h * 0.6),
+                   vec3<f32>(1.0, 0.85, 0.55) * (h * 0.6),
+                   h >= 0.0);
+  } else if (L.debugMode > 3.5) {
     color = giTerm / max(L.giStrength, 1e-3);
   } else if (L.debugMode > 2.5) {
     color = emis;

@@ -254,7 +254,7 @@ manager (save/load/copy JSON/reset). The groups:
   `skyStrength`, `exposure`, `tintAmount`, `grain`, `material`.
 - **Lights**: `lightsVisible` + three optional draggable orb emitters.
 - **Depth**: cast shadows (`shadow*`), fill light (`fill*`), contact AO (`ao*`).
-- **Debug**: Final / Albedo / Normal / Emissive / Irradiance views, `showPerf`.
+- **Debug**: Final / Albedo / Normal / Height / Emissive / Irradiance / Shadow / AO / Occlusion views, `showPerf`.
 
 Panel state persists to `localStorage`; library consumers get the same defaults
 via `DEFAULT_PARAMS` and override through `GIProvider`'s `quality`/`params`.

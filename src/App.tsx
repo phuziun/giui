@@ -160,7 +160,17 @@ function useStudio() {
       {
         debugMode: {
           value: seed("debugMode", 0),
-          options: { Final: 0, Albedo: 1, Normal: 2, Emissive: 3, Irradiance: 4 },
+          options: {
+            Final: 0,
+            Albedo: 1,
+            Normal: 2,
+            Height: 5,
+            Emissive: 3,
+            Irradiance: 4,
+            Shadow: 6,
+            AO: 7,
+            Occlusion: 8,
+          },
         },
         showPerf: seed("showPerf", true),
       },

@@ -381,7 +381,7 @@ function Studio({
 
 // --- demo ------------------------------------------------------------------
 
-const ROUTES = ["home", "components", "docs", "templates", "studio"];
+const ROUTES = ["home", "examples", "components", "docs", "studio"];
 
 // The wordmark's dot. Off the home route (`lit`) it becomes a glowing accent
 // emitter — the logo lights up over the nav backlight. On home it's a real
@@ -469,7 +469,7 @@ function LitWordmark({ onClick }: { onClick: () => void }) {
 // Routes may carry a sub-path (#/docs/button): `route` keeps the full path,
 // the first segment picks the page, the rest is handed to that page.
 function parseRoute(hash: string): string {
-  const r = hash.replace(/^#\/?/, "");
+  const r = hash.replace(/^#\/?/, "").replace(/^templates/, "examples"); // old links
   return ROUTES.includes(r.split("/")[0]) ? r : "home";
 }
 
@@ -541,7 +541,7 @@ export default function App() {
                 <LitWordmark onClick={() => nav("home")} />
               )}
               <GISegmented
-                options={["Home", "Components", "Docs", "Templates", "Studio"]}
+                options={["Home", "Examples", "Components", "Docs", "Studio"]}
                 index={ROUTES.indexOf(page)}
                 onChange={(i) => nav(ROUTES[i])}
                 width={480}
@@ -564,7 +564,7 @@ export default function App() {
 
           {page === "docs" && <Docs slug={sub} />}
 
-          {page === "templates" && <Templates />}
+          {page === "examples" && <Templates />}
 
           {page === "studio" && (
             <Studio current={v as Dict} lights={lightPos} set={set as (v: Dict) => void} />

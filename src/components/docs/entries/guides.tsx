@@ -1,6 +1,6 @@
 import { useGITheme } from "../../../gi/GIProvider";
 import { useGIShape } from "../../../gi/useGIShape";
-import { Surface, GIButton, GIField, GIToggle, GISlider, GIBadge } from "../../index";
+import { Surface, GIButton, GIField, GIToggle, GISlider, GIBadge, GIKbd } from "../../index";
 import type { DocEntry } from "./types";
 
 export const GUIDES: DocEntry[] = [
@@ -138,6 +138,46 @@ function GlowCard({ children }: { children: React.ReactNode }) {
               style={{ borderRadius: 9, padding: "14px 22px", color: "rgba(160, 175, 195, 0.7)", fontSize: 13 }}
             >
               A carved dark well
+            </div>
+          );
+        },
+      },
+    ],
+  },
+  {
+    slug: "studio",
+    name: "Studio",
+    group: "Getting started",
+    intro:
+      "The Studio route (in the nav above) is the live tuning workbench: a panel driving every lighting parameter — key light, shadows, AO, GI bounce, material, film grain — with the changes applied to the whole site in real time, plus a preset manager to save, compare, and copy configurations.",
+    examples: [
+      {
+        title: "From Studio to your app",
+        note: "Dial in a look in Studio, hit Copy JSON, and pass the values through GIProvider's params. The quality presets and your overrides merge in order: defaults → quality → params. Studio state persists to localStorage, so your tuning survives reloads while you explore.",
+        code: `// 1. Open Studio, tune the look, press "Copy JSON".
+// 2. Feed the values you changed into the provider:
+<GIProvider
+  quality="medium"
+  params={{
+    keyIntensity: 0.41,
+    heightScale: 1.3,
+    shadowLength: 122,
+    giBackground: 0.14,
+    // …anything from GIParams (src/gi/types.ts)
+  }}
+>
+  <App />
+</GIProvider>`,
+        Demo: () => {
+          const { accent } = useGITheme();
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <GIButton accent={accent} onClick={() => (location.hash = "/studio")}>
+                Open Studio
+              </GIButton>
+              <span style={{ fontSize: 12.5, color: "rgba(150,162,184,0.65)", display: "flex", gap: 4, alignItems: "center" }}>
+                every slider there relights this page — including the <GIKbd>Docs</GIKbd> you're reading
+              </span>
             </div>
           );
         },

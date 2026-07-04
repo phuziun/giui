@@ -239,7 +239,7 @@ function Inbox() {
 export function Templates() {
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-      <SectionTitle title="Templates" hint="Full compositions built from the kit — every panel, control and glow is in the same light field." />
+      <SectionTitle title="Examples" hint="Full compositions built from the kit — every panel, control and glow is in the same light field." />
       <Dashboard />
       <Inbox />
       <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "flex-start" }}>

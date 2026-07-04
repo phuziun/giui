@@ -1,0 +1,43 @@
+/* Styles the component kit itself depends on — imported by components/index.tsx
+   so a vendored copy works without the demo site's stylesheet (src/index.css,
+   which only carries demo layout + landing-page effects). The GI shapes of
+   GIProgress/GIDots/GISpinner are `live`, so they track these CSS animations
+   every frame; the keyframes respect prefers-reduced-motion. */
+
+.gi-field::placeholder {
+  color: rgba(150, 160, 180, 0.6);
+}
+.gi-field:focus::placeholder {
+  color: rgba(180, 192, 214, 0.75);
+}
+
+@keyframes gi-progress-sweep {
+  from { left: 0%; }
+  to { left: 70%; }
+}
+.gi-progress-sweep {
+  animation: gi-progress-sweep 1.3s ease-in-out infinite alternate;
+}
+
+@keyframes gi-dot-pulse {
+  0%, 100% { transform: scale(0.55); }
+  50% { transform: scale(1.15); }
+}
+.gi-dot-pulse {
+  animation: gi-dot-pulse 1.05s ease-in-out infinite;
+}
+
+@keyframes gi-spin {
+  to { transform: rotate(360deg); }
+}
+.gi-spin {
+  animation: gi-spin 0.9s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gi-progress-sweep,
+  .gi-dot-pulse,
+  .gi-spin {
+    animation: none;
+  }
+}

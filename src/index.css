@@ -93,30 +93,9 @@ html {
   }
 }
 
-/* Component animations. The GI shapes are `live`, so they track these CSS
-   transforms/positions every frame (the compositor drives the motion). */
-@keyframes gi-progress-sweep {
-  from { left: 0%; }
-  to { left: 70%; }
-}
-.gi-progress-sweep {
-  animation: gi-progress-sweep 1.3s ease-in-out infinite alternate;
-}
-
-@keyframes gi-dot-pulse {
-  0%, 100% { transform: scale(0.55); }
-  50% { transform: scale(1.15); }
-}
-.gi-dot-pulse {
-  animation: gi-dot-pulse 1.05s ease-in-out infinite;
-}
-
-@keyframes gi-spin {
-  to { transform: rotate(360deg); }
-}
-.gi-spin {
-  animation: gi-spin 0.9s linear infinite;
-}
+/* Component-kit keyframes (gi-progress-sweep / gi-dot-pulse / gi-spin) and
+   .gi-field placeholder styles moved to src/components/components.css, which
+   the kit imports itself — this file is demo-site-only now. */
 
 /* Landing hero: lava-lamp blobs bobbing on offset phases (the colour cycle is
    JS-driven), and a gentle breathing scale on the hero's glow bar. */
@@ -155,9 +134,6 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .gi-progress-sweep,
-  .gi-dot-pulse,
-  .gi-spin,
   .gi-lava-a,
   .gi-lava-b,
   .gi-lava-c,
@@ -326,13 +302,6 @@ html {
 .settings-row .label {
   font-size: 13px;
   color: rgba(190, 198, 216, 0.78);
-}
-
-.gi-field::placeholder {
-  color: rgba(150, 160, 180, 0.6);
-}
-.gi-field:focus::placeholder {
-  color: rgba(180, 192, 214, 0.75);
 }
 
 .grid {

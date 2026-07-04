@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useGIShape } from "../gi/useGIShape";
 import { useGITheme } from "../gi/GIProvider";
+import "./components.css"; // kit-required styles (field placeholders, loader keyframes)
 
 type Vec3 = [number, number, number];
 

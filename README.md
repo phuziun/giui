@@ -33,12 +33,27 @@ unlit.
 
 ## Getting started
 
-giui is not on npm yet. Adopt it by vendoring two folders into a Vite + React
-app (they only depend on `react` — no other runtime dependencies):
+giui is not on npm yet, but it builds as a proper library. Two ways in:
+
+**Build the package** — `npm run build:lib` produces `dist-lib/` (ES module,
+React externalized, WGSL inlined, `.d.ts` types, `style.css`), and
+`package.json` carries the `exports` map, so `npm pack` / a git checkout with
+`dist-lib` built installs like any package:
+
+```bash
+npm install /path/to/giui        # after running build:lib in it
+```
+```ts
+import { GIProvider, GIButton } from "giui";
+import "giui/style.css";
+```
+
+**Or vendor the source** into a Vite + React app (the engine imports WGSL via
+Vite's `?raw`, so vendoring requires Vite):
 
 ```
 src/gi/           # the engine: provider, renderer, shaders, useGIShape
-src/components/   # the kit: ~40 lit components (+ components.css, imported automatically)
+src/components/   # the kit: ~45 lit components (+ components.css, imported automatically)
 ```
 
 Then wrap your app in the provider and build with the kit:
@@ -97,6 +112,7 @@ cast follows. `useGITheme()` exposes the resolved theme for your own components.
 | `low` | 896 | 5 | 4 | integrated/weak GPUs |
 | `medium` (default) | 1216 | 6 | 16 | most machines |
 | `high` | 1664 | 7 | 16 | big desktop GPUs |
+| `auto` | — | — | — | medium, dropping to low on a software rasterizer |
 
 Lighting **distances are authored in CSS pixels** and scale-invariant, so
 presets only trade sharpness — AO/shadow/glow character is identical at every
@@ -146,10 +162,11 @@ elements with keyboard/focus behavior.
 | Group | Components |
 |---|---|
 | Surfaces | `Surface` (raised or `carved`), `GIDivider` |
+| App shell | `GIAppBar`, `GINavRail` (+`collapsed`), `GIDrawer` |
 | Buttons & inputs | `GIButton`, `GIField`, `GITextarea`, `GISearch`, `GIStepper`, `GISelect`, `GICombobox`, `GIDatePicker` |
 | Selection | `GIToggle`, `GICheckbox`, `GIRadioGroup`, `GISegmented`, `GISlider`, `GIRange`, `GIRating` |
 | Navigation | `GITabs`, `GIBreadcrumb`, `GIPagination`, `GIMenu`, `GICommandPalette` (⌘K) |
-| Overlays | `GIDialog`, `GITooltip`, `GIToast` |
+| Overlays | `GIDialog`, `GITooltip`, `GIToast` + `GIToaster`/`toast()` snackbar queue |
 | Data display | `GITable`, `GIList`/`GIListItem`, `GIStat`, `GIBadge`, `GITag`, `GIKbd`, `GIAvatar`, `GIAccordion` |
 | Feedback | `GIProgress` (+`indeterminate`), `GISpinner`, `GIDots`, `GISkeleton`, `GIAlert`, `GIEmptyState` |
 | Light | `GILight` — a draggable emitter orb; controlled via `position`/`onChange`, `visible={false}` hides the orb while it keeps lighting the scene |
@@ -278,8 +295,9 @@ via `DEFAULT_PARAMS` and override through `GIProvider`'s `quality`/`params`.
 
 ## Known limitations / roadmap
 
-- **Not packaged for npm yet** — adoption is vendor-the-source; an `exports`
-  map + library build (and `quality="auto"`) are the next planned steps.
+- **Not published to npm yet** — the library build + `exports` map exist
+  (`npm run build:lib`), but the name/registry decision is pending, so install
+  is from a local path/git for now.
 - **Vite-only** as shipped (WGSL `?raw` imports, `import.meta` env checks).
 - SDF primitives are rect + circle only (ratings use round pips; arcs/stars
   aren't primitives).

@@ -69,6 +69,7 @@ export function GICanvas({
   params = DEFAULT_PARAMS,
   showPerf = false,
   onError,
+  onGPUInfo,
   children,
 }: {
   params?: GIParams;
@@ -77,6 +78,9 @@ export function GICanvas({
    *  The DOM UI keeps working unlit either way; this is for consumers who want
    *  to log it or show their own notice instead of the built-in corner chip. */
   onError?: (message: string) => void;
+  /** Called once after device init with the adapter identity — drives
+   *  quality="auto" and lets consumers log/report the GPU tier. */
+  onGPUInfo?: (info: { gpuName: string; softwareGPU: boolean }) => void;
   children: ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -87,6 +91,8 @@ export function GICanvas({
   paramsRef.current = params;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const onGPUInfoRef = useRef(onGPUInfo);
+  onGPUInfoRef.current = onGPUInfo;
   // Bumped to re-run the whole init effect after an unexpected GPU device loss
   // (driver reset, GPU switch on a dual-GPU laptop, TDR): the scene survives in
   // React state, so re-init restores lighting without losing any UI state.
@@ -211,6 +217,7 @@ export function GICanvas({
           software: ctx.softwareGPU,
         };
         gpuLabel = ctx.softwareGPU ? `⚠ SOFTWARE GPU (${ctx.gpuName})` : ctx.gpuName;
+        onGPUInfoRef.current?.({ gpuName: ctx.gpuName, softwareGPU: ctx.softwareGPU });
         forceRender.current = true;
         setStatus("ok");
 
@@ -609,7 +616,12 @@ export function GICanvas({
           pins scrollHeight to the content height. It doesn't hide the visible
           canvas (content spans the page, so the viewport slice is always inside
           the root box) — only the off-screen overscan overhang is clipped. */}
-      <div ref={rootRef} style={{ position: "relative", width: "100%", minHeight: "100%", overflow: "clip" }}>
+      {/* minHeight 100vh (not 100%): a consumer page rarely has a full height
+          chain on html/body/#root, and a collapsed root clips the canvas to a
+          sliver. The background approximates the lit scene so the pre-GI
+          moment (and the no-WebGPU fallback) reads dark instead of a white
+          page with light text — the demo sets the same colour on <body>. */}
+      <div ref={rootRef} style={{ position: "relative", width: "100%", minHeight: "100vh", overflow: "clip", background: "#1e222b" }}>
         <canvas
           ref={canvasRef}
           style={{

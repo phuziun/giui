@@ -5,18 +5,18 @@
   "license": "PolyForm-Small-Business-1.0.0",
   "author": "Dave Hale (https://github.com/phuziun/giui)",
   "homepage": "https://phuziun.github.io/giui/",
-  "repository": { "type": "git", "url": "https://github.com/phuziun/giui.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phuziun/giui.git"
+  },
   "funding": "https://davehale.net/donate",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
-  },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "typecheck": "tsc -b --noEmit",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
@@ -26,6 +26,31 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@webgpu/types": "^0.1.52",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "description": "Dark-neumorphic React UI kit lit by real 2D global illumination (radiance cascades on WebGPU)",
+  "main": "./dist-lib/giui.js",
+  "module": "./dist-lib/giui.js",
+  "types": "./dist-lib/types/lib.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/types/lib.d.ts",
+      "import": "./dist-lib/giui.js"
+    },
+    "./style.css": "./dist-lib/style.css"
+  },
+  "files": [
+    "dist-lib",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0",
+    "react-dom": "^18.3.0 || ^19.0.0"
   }
 }

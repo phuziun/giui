@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { GICanvas } from "./GIContext";
 import { DEFAULT_PARAMS, type GIParams } from "./types";
 
@@ -60,29 +60,47 @@ export function GIProvider({
   params,
   showPerf = false,
   onError,
+  onGPUInfo,
   children,
 }: {
   theme?: Partial<GITheme>;
-  quality?: GIQuality;
+  /** "auto" starts at medium and drops to low if the browser is on a software
+   *  rasterizer (adaptive resolution handles everything finer-grained). */
+  quality?: GIQuality | "auto";
   params?: Partial<GIParams>;
   showPerf?: boolean;
   /** Lighting-layer failure callback (no WebGPU, repeated GPU device loss).
    *  The UI keeps working unlit; use this to log or show your own notice. */
   onError?: (message: string) => void;
+  /** GPU adapter identity, once after init (name + software-rasterizer flag). */
+  onGPUInfo?: (info: { gpuName: string; softwareGPU: boolean }) => void;
   children: ReactNode;
 }) {
   const mergedTheme = useMemo<GITheme>(() => ({ ...DEFAULT_THEME, ...theme }), [theme]);
+  // quality="auto": conservative and observable — medium unless the adapter
+  // turns out to be a CPU rasterizer (SwiftShader/llvmpipe), then low. The
+  // built-in adaptive scaler + frame pacing already handle per-machine load,
+  // so the preset only needs to pick the right resolution ceiling.
+  const [autoQuality, setAutoQuality] = useState<GIQuality>("medium");
+  const resolvedQuality: GIQuality | undefined = quality === "auto" ? autoQuality : quality;
+  const handleGPUInfo = useCallback(
+    (info: { gpuName: string; softwareGPU: boolean }) => {
+      if (info.softwareGPU) setAutoQuality("low");
+      onGPUInfo?.(info);
+    },
+    [onGPUInfo]
+  );
   const mergedParams = useMemo<GIParams>(
     () => ({
       ...DEFAULT_PARAMS,
-      ...(quality ? QUALITY_PRESETS[quality] : {}),
+      ...(resolvedQuality ? QUALITY_PRESETS[resolvedQuality] : {}),
       ...params,
     }),
-    [quality, params]
+    [resolvedQuality, params]
   );
   return (
     <ThemeContext.Provider value={mergedTheme}>
-      <GICanvas params={mergedParams} showPerf={showPerf} onError={onError}>
+      <GICanvas params={mergedParams} showPerf={showPerf} onError={onError} onGPUInfo={handleGPUInfo}>
         {children}
       </GICanvas>
     </ThemeContext.Provider>

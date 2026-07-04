@@ -580,7 +580,9 @@ function NavBlob({ color, size, cls, left, top }: { color: Vec3; size: number; c
     albedo: color,
     // Subtle: rawGlow bypasses the 0.05 componentGlow master, so keep emission
     // low — this is an ambient wash around the bar, not a floodlight.
-    emission: scale(color, 0.042),
+    // 0.042 → 0.021 (owner 2026-07-04: "reduce the GI contribution by half
+    // from the titlebar").
+    emission: scale(color, 0.021),
     opacity: 0.5, // radiates into the GI (emitters need opacity to cast light)
     bodyAlpha: 0, // hidden — no visible body/display, only the light it casts
     rawGlow: true,

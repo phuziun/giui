@@ -24,6 +24,7 @@ import { useGITheme } from "./gi/GIProvider";
 import { Zoo } from "./components/Zoo";
 import { Templates } from "./components/Templates";
 import { Landing, NavGlow } from "./components/Landing";
+import { Docs } from "./components/docs/Docs";
 
 type Vec3 = [number, number, number];
 
@@ -380,7 +381,7 @@ function Studio({
 
 // --- demo ------------------------------------------------------------------
 
-const ROUTES = ["home", "components", "templates", "studio"];
+const ROUTES = ["home", "components", "docs", "templates", "studio"];
 
 // The wordmark's dot. Off the home route (`lit`) it becomes a glowing accent
 // emitter — the logo lights up over the nav backlight. On home it's a real
@@ -445,9 +446,11 @@ function LitWordmark({ onClick }: { onClick: () => void }) {
   );
 }
 
+// Routes may carry a sub-path (#/docs/button): `route` keeps the full path,
+// the first segment picks the page, the rest is handed to that page.
 function parseRoute(hash: string): string {
   const r = hash.replace(/^#\/?/, "");
-  return ROUTES.includes(r) ? r : "home";
+  return ROUTES.includes(r.split("/")[0]) ? r : "home";
 }
 
 export default function App() {
@@ -485,15 +488,17 @@ export default function App() {
     location.hash = r === "home" ? "/" : `/${r}`;
     window.scrollTo(0, 0);
   };
+  const page = route.split("/")[0];
+  const sub = route.split("/").slice(1).join("/");
 
   return (
     <div className="stage">
       {/* The tuning panel lives on the Studio route only. */}
-      <Leva hidden={route !== "studio"} />
+      <Leva hidden={page !== "studio"} />
       <GIProvider
         params={params}
         theme={{ accent: accentVec }}
-        showPerf={(v.showPerf as boolean) && route === "studio"}
+        showPerf={(v.showPerf as boolean) && page === "studio"}
       >
         <div className="layout">
           {/* The nav is built from the kit itself: a raised lit bar and the
@@ -501,13 +506,13 @@ export default function App() {
               home route, a lava-lamp SCREEN backlights the bar (light spilling
               around it) and the logo lights up. */}
           <div style={{ position: "relative" }}>
-            {route !== "home" && <NavGlow />}
+            {page !== "home" && <NavGlow />}
             {/* Off home the bar is more opaque so it occludes the backlight like
                 a solid TV — the hue light spills AROUND it, not through it. */}
             {/* matte off home: the bar receives NO GI bounce, so the emitters
                 behind it (NavGlow) light AROUND it, never its own face. */}
-            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={route === "home" ? undefined : 0.95} matte={route !== "home"}>
-              {route === "home" ? (
+            <Surface className="topnav" style={{ padding: "8px 10px 8px 16px" }} radius={10} heightScale={1.2} opacity={page === "home" ? undefined : 0.95} matte={page !== "home"}>
+              {page === "home" ? (
                 <span className="wordmark" onClick={() => nav("home")}>
                   giui
                   <LogoDot />
@@ -516,18 +521,18 @@ export default function App() {
                 <LitWordmark onClick={() => nav("home")} />
               )}
               <GISegmented
-                options={["Home", "Components", "Templates", "Studio"]}
-                index={ROUTES.indexOf(route)}
+                options={["Home", "Components", "Docs", "Templates", "Studio"]}
+                index={ROUTES.indexOf(page)}
                 onChange={(i) => nav(ROUTES[i])}
-                width={410}
-                matte={route !== "home"}
+                width={480}
+                matte={page !== "home"}
               />
             </Surface>
           </div>
 
-          {route === "home" && <Landing />}
+          {page === "home" && <Landing />}
 
-          {route === "components" && (
+          {page === "components" && (
             <>
               <header className="page-head">
                 <h2>Components</h2>
@@ -537,9 +542,11 @@ export default function App() {
             </>
           )}
 
-          {route === "templates" && <Templates />}
+          {page === "docs" && <Docs slug={sub} />}
 
-          {route === "studio" && (
+          {page === "templates" && <Templates />}
+
+          {page === "studio" && (
             <Studio current={v as Dict} lights={lightPos} set={set as (v: Dict) => void} />
           )}
         </div>

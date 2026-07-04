@@ -63,6 +63,79 @@ html {
   pointer-events: auto;
 }
 
+/* Docs: sticky sidebar + per-component pages (MUI-style reference). */
+.docs-side {
+  position: sticky;
+  top: 20px;
+  flex: none;
+  width: 168px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  padding: 4px 12px 24px 0;
+  pointer-events: auto;
+}
+
+.docs-side-group {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-weight: 600;
+  color: rgba(150, 162, 184, 0.55);
+  margin: 18px 0 6px;
+}
+.docs-side > div:first-child .docs-side-group {
+  margin-top: 0;
+}
+
+.docs-link {
+  display: block;
+  padding: 4px 10px;
+  margin-left: -10px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-decoration: none;
+  color: rgba(178, 190, 210, 0.72);
+}
+.docs-link:hover {
+  color: rgba(220, 230, 245, 0.95);
+}
+.docs-link.active {
+  color: rgba(130, 200, 250, 0.95);
+  background: rgba(80, 150, 220, 0.08);
+}
+
+.docs-h3 {
+  margin: 6px 0 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: rgba(214, 222, 238, 0.92);
+}
+
+.docs-note {
+  margin: 0;
+  max-width: 640px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(150, 162, 184, 0.68);
+}
+
+.docs-demo {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  min-height: 48px;
+}
+.docs-demo > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 900px) {
+  .docs-side {
+    display: none;
+  }
+}
+
 /* Component zoo: a responsive grid of labeled demo tiles. */
 .zoo {
   display: grid;

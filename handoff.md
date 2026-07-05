@@ -1177,3 +1177,65 @@ NB benchmarking trap discovered at the same time: the owner's Mac on LOW
 BATTERY caps headless-Chrome rAF at 30Hz — a "4x regression" measured
 during this work was partly/wholly the battery, not the code. Re-bench
 plugged in before trusting numbers.
+
+## ⚠ UNRESOLVED: PowerVR phone still black after the shapetex fix (2026-07-05)
+
+Owner reports the phone is STILL not working after the dual-path deploy.
+NO post-fix chip screenshot was captured — so it is unknown whether:
+(a) the workaround even engaged (chip init line should show "[shapetex]" —
+    the regex matches /img-tec|imagination|powervr/i against gpuName
+    "img-tec d-series", so it SHOULD), or
+(b) it engaged but stages still read scene=0.00/0.00 (textureLoad in
+    compute also broken on this driver), or
+(c) stages became healthy but the screen stays black (present/swapchain
+    path broken instead).
+FIRST ACTION NEXT SESSION: get one more phone screenshot of
+https://phuziun.github.io/giui/?giDebug&v=6 and branch on it.
+
+### The complete diagnostic ledger (all live via URL params)
+- `?giDebug` chip: webgpu availability, engine, init (gpu + [shapetex]
+  flag), renders/scale, JS-side `shapes:` count, canvas dims, `stages:`
+  probe (rgb/alpha per stage: scene/nrm/casc0/lit on cascade, emit/ch0 on
+  lite), first uncapturederror, render-loop crashes, window.onerror.
+- `?engine=lite|cascade`, `?shapetex=1|0` overrides.
+- window.__giProbe(), window.__giShapes(), window.__giPerf, window.__giInit.
+- Phone facts so far: Android Chrome, PowerVR "img-tec d-series", WebGPU
+  inits, pipelines compile (83-208ms), renders run (63-65), adaptive scale
+  drops to 0.7, NO errors of any kind, JS packs 20 shapes, GPU sees ZERO
+  shapes (scene=0.00/0.00, nrm w=0.00) → storage-buffer-reads-as-zeros
+  diagnosis → shapetex dual path shipped → still black (untriaged).
+
+### Hypothesis tree for next session
+1. If [shapetex] did NOT engage: adapter-string mismatch — check the chip's
+   exact gpu string; loosen the regex or key off `?shapetex=1` result.
+2. If engaged and stages still zero: the driver's COMPUTE stage is broken
+   more broadly (not just storage buffers). Biggest lever: a FRAGMENT-based
+   scene pass fallback (MRT render to the G-buffer) — fragment is the most
+   battle-tested driver path; all our suspicious passes are compute.
+   (Lite's emit/probe/tile are compute too — same fallback idea applies,
+   or precompute probes... bigger surgery.)
+3. If stages healthy but screen black: present/swapchain on that driver —
+   try alphaMode "premultiplied", explicit format bgra8unorm/rgba8unorm,
+   or drawing the present pass into an intermediate texture + canvas 2D
+   blit as a last-resort output path.
+4. Regardless of fix: add a **GPU CANARY self-test** at init — render one
+   known shape to a tiny offscreen target, read back, verify non-zero; on
+   failure, disable lighting gracefully (unlit UI + the corner notice)
+   instead of shipping a silently-black experience on any future broken
+   driver. This makes the library robust beyond this one device.
+5. Consider a minimal repro + Chromium bug (storage buffers read as zeros
+   in compute on PowerVR under Android Chrome's WebGPU) — worth checking
+   chrome://gpu on the phone for whether WebGPU runs in compatibility mode
+   there, and whether img-tec is even on Chrome's Android allowlist (the
+   initial allowlist was Qualcomm Adreno + ARM Mali; Imagination may be
+   unvalidated territory — possibly "won't fix locally").
+
+### Also note
+- Owner's Mac hit 14% battery during this work — macOS low-power caps
+  headless-Chrome rAF at 30Hz. The suspected "4x texture-path regression"
+  benchmark was contaminated by this; RE-BENCH PLUGGED IN before drawing
+  conclusions about shapetex costs on desktop. (The dual path defaults to
+  buffers on healthy GPUs regardless, so desktop perf is safe by design.)
+- Desktop Safari 26 runs BOTH engines fine (WebKit WGSL compiles); an
+  up-to-date iPhone should therefore work — the PowerVR issue is Android/
+  driver-specific, not "mobile" generally. Untested on a real iPhone.

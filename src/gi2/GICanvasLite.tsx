@@ -175,6 +175,7 @@ export function GICanvasLite({
         };
         (window as unknown as { __giProbe?: () => Promise<string> }).__giProbe = () =>
           renderer ? renderer.probe() : Promise.resolve("no renderer");
+        (window as unknown as { __giShapes?: () => number }).__giShapes = () => sceneRef.current.count;
         applySize();
         setStatus("ok");
         needsRender.current = true;

@@ -599,7 +599,8 @@ function GIDebugChip({ engine, err }: { engine: string; err: string }) {
 webgpu: ${hasGPU ? "yes" : "NO (navigator.gpu missing)"}
 engine: ${engine}
 init: ${init ? `ok — ${init.gpu}${init.software ? " (SOFTWARE)" : ""}, dev ${init.deviceMs}ms, pipe ${init.pipelineMs}ms` : "(not initialized)"}
-renders: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.renders ?? "?"} scale: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.scale ?? "?"}
+renders: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.renders ?? "?"} scale: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.scale ?? "?"} shapes: ${(window as unknown as { __giShapes?: () => number }).__giShapes?.() ?? "?"}
+canvas: ${document.querySelector("canvas")?.width ?? "?"}x${document.querySelector("canvas")?.height ?? "?"}
 stages: ${probe}
 error: ${err || "none"}
 jsError: ${jsErr || "none"}

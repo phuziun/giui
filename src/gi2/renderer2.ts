@@ -360,14 +360,15 @@ export class Renderer2 {
         this.ctx.device.queue.submit([enc.finish()]);
         await buf.mapAsync(GPUMapMode.READ);
         const u16 = new Uint16Array(buf.getMappedRange());
-        let mx = 0;
+        const m = [0, 0, 0, 0];
         for (let row = 0; row < 8; row++) for (let c = 0; c < 32; c++) {
           const v = f16(u16[row * 128 + c]);
-          if (Number.isFinite(v)) mx = Math.max(mx, Math.abs(v));
+          if (Number.isFinite(v)) m[c % 4] = Math.max(m[c % 4], Math.abs(v));
         }
         buf.unmap();
         buf.destroy();
-        out.push(`${name}=${mx.toFixed(3)}`);
+        const rgb = Math.max(m[0], m[1], m[2]);
+        out.push(`${name}=${rgb.toFixed(2)}/${m[3].toFixed(2)}`);
       } catch (e) {
         out.push(`${name}=ERR(${String(e).slice(0, 40)})`);
       }

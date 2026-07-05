@@ -237,6 +237,9 @@ export function GICanvas({
         // giDebug deep probe (reads back each pipeline stage's output).
         (window as unknown as { __giProbe?: () => Promise<string> }).__giProbe = () =>
           renderer ? renderer.probe() : Promise.resolve("no renderer");
+        // JS-side packed shape count — disambiguates "shapes never packed"
+        // from "GPU can't read the shape buffer" when the scene stage reads 0.
+        (window as unknown as { __giShapes?: () => number }).__giShapes = () => sceneRef.current.count;
         forceRender.current = true;
         setStatus("ok");
 

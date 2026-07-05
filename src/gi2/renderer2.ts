@@ -3,6 +3,7 @@
 // else is new: 3 tiny compute passes + one analytic present pass.
 
 import type { GPUContext } from "../gi/device";
+import { useShapeTexture, shapeAccessWGSL } from "../gi/shapeSource";
 import type { Scene } from "../gi/scene";
 import { SCREEN_TEX_W, SCREEN_TEX_H, type ScreenSource } from "../gi/renderer";
 import liteSrc from "./shaders/lite.wgsl?raw";
@@ -95,7 +96,9 @@ export class Renderer2 {
   private tilePipe!: GPUComputePipeline;
   private presentPipe!: GPURenderPipeline;
   private ubo!: GPUBuffer;
-  private shapeBuf!: GPUBuffer;
+  private shapeDataTex: GPUTexture | null = null;
+  private shapeBuf: GPUBuffer | null = null;
+  readonly shapesViaTexture: boolean;
   private tileBuf!: GPUBuffer;
   private emitTex!: GPUTexture;
   private chTex: GPUTexture[] = [];
@@ -108,12 +111,15 @@ export class Renderer2 {
 
   private constructor(ctx: GPUContext) {
     this.ctx = ctx;
+    this.shapesViaTexture = useShapeTexture(ctx.gpuName);
   }
 
   static async create(ctx: GPUContext): Promise<Renderer2> {
     const r = new Renderer2(ctx);
     const t0 = performance.now();
-    const mod = ctx.device.createShaderModule({ code: liteSrc });
+    const mod = ctx.device.createShaderModule({
+      code: shapeAccessWGSL(liteSrc, r.shapesViaTexture, "U.shapeCount"),
+    });
     const [emitPipe, probePipe, tilePipe, presentPipe] = await Promise.all([
       ctx.device.createComputePipelineAsync({ layout: "auto", compute: { module: mod, entryPoint: "emitCS" } }),
       ctx.device.createComputePipelineAsync({ layout: "auto", compute: { module: mod, entryPoint: "probeCS" } }),
@@ -131,10 +137,12 @@ export class Renderer2 {
     r.presentPipe = presentPipe;
     r.pipelineMs = performance.now() - t0;
     r.ubo = ctx.device.createBuffer({ size: 80 * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    r.shapeBuf = ctx.device.createBuffer({
-      size: MAX_SHAPES * FLOATS_PER_SHAPE * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
+    if (!r.shapesViaTexture) {
+      r.shapeBuf = ctx.device.createBuffer({
+        size: MAX_SHAPES * FLOATS_PER_SHAPE * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+    }
     r.sampler = ctx.device.createSampler({ magFilter: "linear", minFilter: "linear" });
     // SCREEN light-source texture (canvas/video frames copied in per render).
     r.screenTex = ctx.device.createTexture({
@@ -176,13 +184,34 @@ export class Renderer2 {
       usage: GPUBufferUsage.STORAGE,
     });
 
-    // Bind groups (auto layouts include only the bindings each stage uses).
+    this.buildGroups();
+  }
+
+  // Bind groups (auto layouts include only the bindings each stage uses).
+  // Rebuilt on resize and when the shape texture is reallocated.
+  private shapeBinding(): GPUBindGroupEntry {
+    return this.shapesViaTexture
+      ? { binding: 1, resource: this.shapeDataTex!.createView() }
+      : { binding: 1, resource: { buffer: this.shapeBuf! } };
+  }
+
+  private buildGroups() {
+    const dev = this.ctx.device;
+    // First resize can precede the first shape upload — start with a minimal
+    // (all-zero, inert) shape texture so the bind groups always have a view.
+    if (this.shapesViaTexture && !this.shapeDataTex) {
+      this.shapeDataTex = dev.createTexture({
+        size: [5, 16],
+        format: "rgba32float",
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+      });
+    }
     this.groups = {
       emit0: dev.createBindGroup({
         layout: this.emitPipe.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.ubo } },
-          { binding: 1, resource: { buffer: this.shapeBuf } },
+          this.shapeBinding(),
           { binding: 2, resource: this.sampler },
           { binding: 3, resource: this.screenTex.createView() },
         ],
@@ -211,7 +240,7 @@ export class Renderer2 {
         layout: this.tilePipe.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.ubo } },
-          { binding: 1, resource: { buffer: this.shapeBuf } },
+          this.shapeBinding(),
         ],
       }),
       tile3: dev.createBindGroup({
@@ -222,7 +251,7 @@ export class Renderer2 {
         layout: this.presentPipe.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.ubo } },
-          { binding: 1, resource: { buffer: this.shapeBuf } },
+          this.shapeBinding(),
           { binding: 2, resource: this.sampler },
           { binding: 3, resource: this.screenTex.createView() },
         ],
@@ -256,10 +285,35 @@ export class Renderer2 {
     const outH = canvasTex.height;
     this.resize(cssW, cssH, outW, outH, p);
 
-    // Shapes in css units (scale = 1).
-    scene.pack(1);
+    // Shapes in css units (scale = 1) — uploaded as an rgba32float texture
+    // (see scene.wgsl's shapeTex note; storage buffers read as zeros on at
+    // least one mobile driver).
+    const packChanged = scene.pack(1);
     const count = Math.min(scene.count, MAX_SHAPES);
-    dev.queue.writeBuffer(this.shapeBuf, 0, scene.data.buffer, scene.data.byteOffset, count * FLOATS_PER_SHAPE * 4);
+    if (this.shapesViaTexture) {
+      const bucket = Math.min(MAX_SHAPES, Math.max(16, Math.ceil(count / 16) * 16));
+      let recreated = false;
+      if (!this.shapeDataTex || this.shapeDataTex.height !== bucket) {
+        this.shapeDataTex?.destroy();
+        this.shapeDataTex = dev.createTexture({
+          size: [5, bucket],
+          format: "rgba32float",
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+        recreated = true;
+      }
+      if (packChanged || recreated) {
+        dev.queue.writeTexture(
+          { texture: this.shapeDataTex },
+          scene.data.buffer,
+          { offset: scene.data.byteOffset, bytesPerRow: FLOATS_PER_SHAPE * 4, rowsPerImage: bucket },
+          [5, bucket, 1]
+        );
+      }
+      if (recreated && this.sized.cssW > 0) this.buildGroups();
+    } else if (packChanged) {
+      dev.queue.writeBuffer(this.shapeBuf!, 0, scene.data.buffer, scene.data.byteOffset, count * FLOATS_PER_SHAPE * 4);
+    }
 
     const loW = this.emitTex.width;
     const loH = this.emitTex.height;
@@ -381,6 +435,7 @@ export class Renderer2 {
     this.emitTex?.destroy();
     this.chTex.forEach((t) => t.destroy());
     this.tileBuf?.destroy();
+    this.shapeDataTex?.destroy();
     this.shapeBuf?.destroy();
     this.ubo?.destroy();
   }

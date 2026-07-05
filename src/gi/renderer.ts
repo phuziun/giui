@@ -1,4 +1,5 @@
 import type { GPUContext } from "./device";
+import { useShapeTexture, shapeAccessWGSL } from "./shapeSource";
 import type { Scene } from "./scene";
 import { MAX_SHAPES, FLOATS_PER_SHAPE, type GIParams } from "./types";
 import sceneWgsl from "./shaders/scene.wgsl?raw";
@@ -63,7 +64,15 @@ export class Renderer {
   private sampler: GPUSampler;
 
   // Persistent buffers.
-  private shapeBuffer: GPUBuffer;
+  // Shape data lives in an rgba32float TEXTURE (5 texels/shape), not a storage
+  // buffer: at least one mobile driver (PowerVR img-tec, Android Chrome) reads
+  // compute storage buffers as zeros — shapes silently vanish. textureLoad is
+  // the battle-tested path everywhere. Height = bucketed shape count, so the
+  // shader derives the loop bound from textureDimensions (immune to a broken
+  // scalar uniform too).
+  private shapeDataTex: GPUTexture | null = null;
+  private shapeBuffer: GPUBuffer | null = null;
+  readonly shapesViaTexture: boolean;
   private globalsUBO: GPUBuffer;
   private lightingUBO: GPUBuffer;
   private presentUBO: GPUBuffer;
@@ -93,6 +102,13 @@ export class Renderer {
   private constructor(ctx: GPUContext) {
     this.ctx = ctx;
     this.device = ctx.device;
+    this.shapesViaTexture = useShapeTexture(ctx.gpuName);
+    if (!this.shapesViaTexture) {
+      this.shapeBuffer = this.device.createBuffer({
+        size: MAX_SHAPES * FLOATS_PER_SHAPE * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+    }
 
     this.sampler = this.device.createSampler({
       magFilter: "linear",
@@ -101,10 +117,7 @@ export class Renderer {
       addressModeV: "clamp-to-edge",
     });
 
-    this.shapeBuffer = this.device.createBuffer({
-      size: MAX_SHAPES * FLOATS_PER_SHAPE * 4,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
+
     this.globalsUBO = this.device.createBuffer({
       size: 96, // see scene.wgsl Globals: 12 floats + scrollY/pad + screen vec4s
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -142,7 +155,9 @@ export class Renderer {
     const t0 = performance.now();
     const r = new Renderer(ctx);
     const device = ctx.device;
-    const sceneModule = device.createShaderModule({ code: sceneWgsl });
+    const sceneModule = device.createShaderModule({
+      code: shapeAccessWGSL(sceneWgsl, r.shapesViaTexture, "G.shapeCount"),
+    });
     const cascadeModule = device.createShaderModule({ code: cascadeWgsl });
     const compositeModule = device.createShaderModule({ code: compositeWgsl });
     const presentModule = device.createShaderModule({ code: presentWgsl });
@@ -220,6 +235,52 @@ export class Renderer {
     });
   }
 
+  private buildSceneBindGroup() {
+    this.sceneBindGroup = this.device.createBindGroup({
+      layout: this.scenePipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.globalsUBO } },
+        this.shapesViaTexture
+          ? { binding: 1, resource: this.shapeDataTex!.createView() }
+          : { binding: 1, resource: { buffer: this.shapeBuffer! } },
+        { binding: 2, resource: this.gScene.createView() },
+        { binding: 3, resource: this.gAlbedo.createView() },
+        { binding: 4, resource: this.gNormal.createView() },
+        { binding: 5, resource: this.gDisplay.createView() },
+        { binding: 6, resource: this.sampler },
+        { binding: 7, resource: this.screenTex.createView() },
+      ],
+    });
+  }
+
+  /** (Re)create the shape texture if the bucketed count changed. Returns true
+   *  if recreated (bind group rebuild + full re-upload needed). Bucketing (16)
+   *  keeps band-cull count jitter from reallocating every scroll frame; the
+   *  padding rows are zero-filled and inert in the shaders. */
+  private ensureShapeTex(count: number): boolean {
+    if (!this.shapesViaTexture) return false;
+    const bucket = Math.min(MAX_SHAPES, Math.max(16, Math.ceil(count / 16) * 16));
+    if (this.shapeDataTex && this.shapeDataTex.height === bucket) return false;
+    this.shapeDataTex?.destroy();
+    this.shapeBuffer?.destroy();
+    this.shapeDataTex = this.device.createTexture({
+      size: [5, bucket], // 5 rgba32float texels = FLOATS_PER_SHAPE per row
+      format: "rgba32float",
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    return true;
+  }
+
+  private uploadShapes(scene: Scene) {
+    const rows = this.shapeDataTex!.height;
+    this.device.queue.writeTexture(
+      { texture: this.shapeDataTex! },
+      scene.data.buffer,
+      { offset: scene.data.byteOffset, bytesPerRow: FLOATS_PER_SHAPE * 4, rowsPerImage: rows },
+      [5, rows, 1]
+    );
+  }
+
   private rebuild(params: GIParams) {
     // Tear down previous size-dependent GPU resources.
     this.gScene?.destroy();
@@ -256,20 +317,9 @@ export class Renderer {
       })
     );
 
-    // Scene pass bind group.
-    this.sceneBindGroup = this.device.createBindGroup({
-      layout: this.scenePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.globalsUBO } },
-        { binding: 1, resource: { buffer: this.shapeBuffer } },
-        { binding: 2, resource: this.gScene.createView() },
-        { binding: 3, resource: this.gAlbedo.createView() },
-        { binding: 4, resource: this.gNormal.createView() },
-        { binding: 5, resource: this.gDisplay.createView() },
-        { binding: 6, resource: this.sampler },
-        { binding: 7, resource: this.screenTex.createView() },
-      ],
-    });
+    // Scene pass bind group (also rebuilt when the shape texture is resized).
+    this.ensureShapeTex(16);
+    this.buildSceneBindGroup();
 
     // One cascade bind group per level (out = level i, upper = level i+1).
     this.cascadeBindGroups = this.descs.map((_, i) => {
@@ -553,8 +603,15 @@ export class Renderer {
       cullTop = Math.floor((region.top - 256) / 128) * 128;
       cullBot = Math.ceil((region.top + region.height + 256) / 128) * 128;
     }
-    if (scene.pack(scale, cullTop, cullBot)) {
-      this.device.queue.writeBuffer(this.shapeBuffer, 0, scene.data);
+    {
+      const packChanged = scene.pack(scale, cullTop, cullBot);
+      if (this.shapesViaTexture) {
+        const recreated = this.ensureShapeTex(scene.count);
+        if (recreated) this.buildSceneBindGroup();
+        if (packChanged || recreated) this.uploadShapes(scene);
+      } else if (packChanged) {
+        this.device.queue.writeBuffer(this.shapeBuffer!, 0, scene.data);
+      }
     }
 
     // Scene writes a slightly wider band than the composite reads, so shapes
@@ -716,7 +773,8 @@ export class Renderer {
     this.dummyTex?.destroy();
     this.litTex?.destroy();
     this.cascadeUBOs.forEach((b) => b.destroy());
-    this.shapeBuffer.destroy();
+    this.shapeDataTex?.destroy();
+    this.shapeBuffer?.destroy();
     this.globalsUBO.destroy();
     this.lightingUBO.destroy();
     this.presentUBO.destroy();

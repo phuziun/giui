@@ -66,7 +66,23 @@ struct P {
 };
 
 @group(0) @binding(0) var<uniform> U : P;
-@group(0) @binding(1) var<storage, read> shapes : array<Shape>;
+// Shape access (see scene.wgsl / shapeSource.ts — texture variant is the
+// PowerVR workaround, swapped for a storage buffer on healthy adapters).
+// SHAPES_VIA_TEXTURE_BEGIN
+@group(0) @binding(1) var shapeTex : texture_2d<f32>;
+
+fn getShape(i : u32) -> Shape {
+  let y = i32(i);
+  var s : Shape;
+  s.geom = textureLoad(shapeTex, vec2<i32>(0, y), 0);
+  s.params = textureLoad(shapeTex, vec2<i32>(1, y), 0);
+  s.albedo = textureLoad(shapeTex, vec2<i32>(2, y), 0);
+  s.emission = textureLoad(shapeTex, vec2<i32>(3, y), 0);
+  s.extra = textureLoad(shapeTex, vec2<i32>(4, y), 0);
+  return s;
+}
+fn shapeTotal() -> u32 { return textureDimensions(shapeTex).y; }
+// SHAPES_VIA_TEXTURE_END
 @group(0) @binding(2) var samp : sampler;
 @group(0) @binding(3) var screenTex : texture_2d<f32>;
 
@@ -167,9 +183,9 @@ fn emitCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   var emis = vec3<f32>(0.0);
   var op = 0.0; // raw opacity (max over covering shapes)
   let texel = U.cssSize.x / U.loSize.x;
-  let n = u32(U.shapeCount);
+  let n = shapeTotal();
   for (var i = 0u; i < n; i = i + 1u) {
-    let s = shapes[i];
+    let s = getShape(i);
     if (outsideShape(s, p, texel)) { continue; }
     let d = shapeSD(s, p);
     let cov = 1.0 - smoothstep(0.0, texel, d);
@@ -272,12 +288,12 @@ fn tileCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   let tcssMax = (vec2<f32>(gid.xy) + vec2<f32>(1.0)) * U.tileSize / U.dpr + U.origin;
   let base = (gid.y * tilesX + gid.x) * (TILE_CAP + 1u);
   var count = 0u;
-  let n = u32(U.shapeCount);
+  let n = shapeTotal();
   // Pad by bevel + AA + the longest shadow this shape can throw, so shading
   // terms that reach past the silhouette still find their shape in the list.
   for (var i = 0u; i < n; i = i + 1u) {
     if (count >= TILE_CAP) { break; }
-    let s = shapes[i];
+    let s = getShape(i);
     let half = select(s.geom.zw, vec2<f32>(s.geom.z), s.params.y > 0.5);
     let isEmit = max(max(s.emission.r, s.emission.g), s.emission.b) > 0.0008;
     // Emitters also reach as far as the direct near-field kernel (DIRECT_MAX).
@@ -358,7 +374,7 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let keyPlanar = select(vec2<f32>(0.0), U.keyDir.xy / max(keyLen, 1e-4), keyLen > 1e-4);
 
   for (var k = 0u; k < count; k = k + 1u) {
-    let s = shapes[tilesR[base + 1u + k]];
+    let s = getShape(tilesR[base + 1u + k]);
     let d = shapeSD(s, p);
 
     // Body coverage + painter albedo/tint (same semantics as the raster engine).

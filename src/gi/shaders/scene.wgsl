@@ -37,7 +37,24 @@ struct Globals {
 };
 
 @group(0) @binding(0) var<uniform> G : Globals;
-@group(0) @binding(1) var<storage, read> shapes : array<Shape>;
+// Shape access: TEXTURE variant between the markers (the PowerVR workaround —
+// that driver reads compute storage buffers as zeros); shapeSource.ts swaps in
+// the fast storage-buffer variant on healthy adapters at pipeline build time.
+// SHAPES_VIA_TEXTURE_BEGIN
+@group(0) @binding(1) var shapeTex : texture_2d<f32>;
+
+fn getShape(i : u32) -> Shape {
+  let y = i32(i);
+  var s : Shape;
+  s.geom = textureLoad(shapeTex, vec2<i32>(0, y), 0);
+  s.params = textureLoad(shapeTex, vec2<i32>(1, y), 0);
+  s.albedo = textureLoad(shapeTex, vec2<i32>(2, y), 0);
+  s.emission = textureLoad(shapeTex, vec2<i32>(3, y), 0);
+  s.extra = textureLoad(shapeTex, vec2<i32>(4, y), 0);
+  return s;
+}
+fn shapeTotal() -> u32 { return textureDimensions(shapeTex).y; }
+// SHAPES_VIA_TEXTURE_END
 @group(0) @binding(2) var sceneTex  : texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var albedoTex : texture_storage_2d<rgba16float, write>;
 @group(0) @binding(4) var normalTex : texture_storage_2d<rgba16float, write>;
@@ -97,9 +114,9 @@ fn outsideShape(s : Shape, p : vec2<f32>) -> bool {
 // stored height, so physical depth is unchanged by the relief scaling.
 fn sceneHeightW(p : vec2<f32>, useRelief : bool) -> f32 {
   var h = 0.0;
-  let n = u32(G.shapeCount);
+  let n = shapeTotal();
   for (var i = 0u; i < n; i = i + 1u) {
-    let s = shapes[i];
+    let s = getShape(i);
     if (outsideShape(s, p)) { continue; }
     let d = shapeSD(s, p);
     let bevel = max(s.params.w, 0.5);
@@ -143,9 +160,9 @@ fn sceneMaterial(p : vec2<f32>) -> Material {
   m.display = vec3<f32>(0.0);
   m.tint = 0.0;
 
-  let n = u32(G.shapeCount);
+  let n = shapeTotal();
   for (var i = 0u; i < n; i = i + 1u) {
-    let s = shapes[i];
+    let s = getShape(i);
     if (outsideShape(s, p)) { continue; }
     let d = shapeSD(s, p);
     let cov = 1.0 - smoothstep(0.0, G.edgeAA, d); // 1 inside, fades across edge

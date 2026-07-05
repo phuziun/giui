@@ -169,7 +169,7 @@ export function GICanvasLite({
         }).__giInit = {
           deviceMs: 0,
           pipelineMs: Math.round(renderer.pipelineMs),
-          gpu: ctx.gpuName,
+          gpu: `${ctx.gpuName}${renderer.shapesViaTexture ? " [shapetex]" : ""}`,
           software: ctx.softwareGPU,
           engine: "lite",
         };

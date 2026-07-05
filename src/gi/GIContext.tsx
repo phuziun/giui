@@ -229,7 +229,7 @@ export function GICanvas({
         }).__giInit = {
           deviceMs: Math.round(tDevice - tInit),
           pipelineMs: Math.round(renderer.pipelineMs),
-          gpu: ctx.gpuName,
+          gpu: `${ctx.gpuName}${renderer.shapesViaTexture ? " [shapetex]" : ""}`,
           software: ctx.softwareGPU,
         };
         gpuLabel = ctx.softwareGPU ? `⚠ SOFTWARE GPU (${ctx.gpuName})` : ctx.gpuName;

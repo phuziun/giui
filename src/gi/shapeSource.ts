@@ -1,16 +1,18 @@
 // Which GPU-side container carries the shape data.
 //
-// Storage buffer is the fast path (a plain cached array read). But at least
-// one mobile driver — PowerVR/Imagination ("img-tec ...") under Android
-// Chrome — silently reads compute storage buffers as ZEROS: init succeeds,
-// no validation errors, and every shape simply vanishes (diagnosed on the
-// owner's phone via the giDebug stage probe: shapes: 20, scene=0.00/0.00).
-// For those adapters the shapes travel as an rgba32float texture read with
-// textureLoad instead — universally exercised, ~4x slower per fetch, which
-// is why it is NOT the default everywhere.
+// Storage buffer is the fast path (a plain cached array read) and the
+// default everywhere. The texture path (shapes as rgba32float texels read
+// with textureLoad) is kept as a `?shapetex=1` diagnostic/escape hatch for
+// a future driver whose storage-buffer reads misbehave.
 //
-// `?shapetex=1|0` overrides for testing either path on any device.
-export function useShapeTexture(gpuName: string): boolean {
+// History: this dual path was built when the PowerVR ("img-tec") Pixel 10
+// black screen was misdiagnosed as storage-buffers-read-as-zeros. Direct
+// binding-type repros on that phone later proved storage buffers work fine
+// there — the real bug was the driver miscompiling vertex_index-indexed
+// local arrays in VERTEX shaders (every fullscreen-triangle draw silently
+// culled; fixed in the shaders themselves). So nothing auto-enables this
+// anymore.
+export function useShapeTexture(_gpuName: string): boolean {
   try {
     const o = new URLSearchParams(location.search).get("shapetex");
     if (o === "1") return true;
@@ -18,7 +20,7 @@ export function useShapeTexture(gpuName: string): boolean {
   } catch {
     /* non-browser */
   }
-  return /img-tec|imagination|powervr/i.test(gpuName);
+  return false;
 }
 
 /** Swap the WGSL shape-access block (texture variant, between markers) for

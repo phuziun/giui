@@ -22,13 +22,11 @@ struct VSOut {
 
 @vertex
 fn vs(@builtin(vertex_index) vi : u32) -> VSOut {
-  var p = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>( 3.0, -1.0),
-    vec2<f32>(-1.0,  3.0),
-  );
+  // Fullscreen triangle from bit math, NOT a local array indexed by vi:
+  // PowerVR (Pixel 10 "img-tec d-series") miscompiles vertex_index-indexed
+  // local arrays into degenerate positions — every draw silently culled.
   var out : VSOut;
-  let xy = p[vi];
+  let xy = vec2<f32>(f32(i32(vi & 1u) * 4 - 1), f32(i32(vi >> 1u) * 4 - 1));
   out.pos = vec4<f32>(xy, 0.0, 1.0);
   out.uv = vec2<f32>((xy.x + 1.0) * 0.5, (1.0 - xy.y) * 0.5);
   return out;

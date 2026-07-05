@@ -189,6 +189,11 @@ function useStudio() {
     const e = new URLSearchParams(location.search).get("engine");
     return e === "lite" || e === "cascade" ? e : null;
   }, []);
+  // ?debugMode=0..8 overrides the Studio debug view (remote phone triage).
+  const urlDebugMode = useMemo(() => {
+    const d = new URLSearchParams(location.search).get("debugMode");
+    return d != null && d !== "" && !Number.isNaN(Number(d)) ? Number(d) : null;
+  }, []);
   const params: GIParams = useMemo(
     () => ({
       engine: (urlEngine ?? v.engine) as GIParams["engine"],
@@ -235,9 +240,9 @@ function useStudio() {
       shadowLength: v.shadowLength,
       shadowHeight: v.shadowHeight,
       shadowSoftness: v.shadowSoftness,
-      debugMode: v.debugMode,
+      debugMode: urlDebugMode ?? v.debugMode,
     }),
-    [v]
+    [v, urlDebugMode]
   );
 
   const lights = useMemo(

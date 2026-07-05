@@ -1156,3 +1156,24 @@ pinpoints the dark pass on PowerVR.
 3. **Contact ramp** on the direct kernel (smoothstep 0..6px past the
    silhouette): the 90°-peak at contact amplified gather dither into a
    speckled ring around emitters.
+
+## PowerVR/Android root cause + fix (2026-07-05) — THE PHONE SAGA RESOLVED
+Owner's phone (Android Chrome, PowerVR "img-tec d-series"): WebGPU inits
+clean, renders run, but the page is black. giDebug chip iterations (see
+?giDebug, ?engine=, ?shapetex= URL params; stage probe __giProbe; shape
+count __giShapes; uncapturederror + loop-crash + jsError capture — all
+built this session) pinpointed it: **shapes: 20 on the JS side but
+scene=0.00/0.00 on the GPU — the driver reads compute STORAGE BUFFERS as
+zeros.** No error, no validation complaint.
+
+Fix: `gi/shapeSource.ts` — dual shape path selected at pipeline build:
+storage buffer (fast, default) vs rgba32float texture read via textureLoad
+(5 texels/shape, bucketed height = loop bound from textureDimensions),
+auto-enabled when the adapter matches img-tec/imagination/powervr, both
+engines, `?shapetex=1|0` override, chip shows "[shapetex]". Desktop
+verified identical on both paths. AWAITING phone confirmation.
+
+NB benchmarking trap discovered at the same time: the owner's Mac on LOW
+BATTERY caps headless-Chrome rAF at 30Hz — a "4x regression" measured
+during this work was partly/wholly the battery, not the code. Re-bench
+plugged in before trusting numbers.

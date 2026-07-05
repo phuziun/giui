@@ -557,9 +557,26 @@ function parseRoute(hash: string): string {
 // and any lighting-layer error. Ask a user to screenshot THIS.
 function GIDebugChip({ engine, err }: { engine: string; err: string }) {
   const [tick, setTick] = useState(0);
+  const [probe, setProbe] = useState("…");
   useEffect(() => {
     const t = window.setInterval(() => setTick((x) => x + 1), 1000);
-    return () => window.clearInterval(t);
+    // Deep probe once the renderer is up: reads back each stage's output so a
+    // black canvas can be trisected (scene -> cascades -> composite -> present).
+    const p = window.setInterval(async () => {
+      const fn = (window as unknown as { __giProbe?: () => Promise<string> }).__giProbe;
+      if (fn) {
+        window.clearInterval(p);
+        try {
+          setProbe(await fn());
+        } catch (e) {
+          setProbe(`probe failed: ${String(e).slice(0, 80)}`);
+        }
+      }
+    }, 2000);
+    return () => {
+      window.clearInterval(t);
+      window.clearInterval(p);
+    };
   }, []);
   void tick;
   const init = (window as unknown as { __giInit?: { deviceMs: number; pipelineMs: number; gpu: string; software: boolean } }).__giInit;
@@ -570,6 +587,8 @@ function GIDebugChip({ engine, err }: { engine: string; err: string }) {
 webgpu: ${hasGPU ? "yes" : "NO (navigator.gpu missing)"}
 engine: ${engine}
 init: ${init ? `ok — ${init.gpu}${init.software ? " (SOFTWARE)" : ""}, dev ${init.deviceMs}ms, pipe ${init.pipelineMs}ms` : "(not initialized)"}
+renders: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.renders ?? "?"} scale: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.scale ?? "?"}
+stages: ${probe}
 error: ${err || "none"}
 ua: ${navigator.userAgent.slice(0, 80)}`}
     </div>

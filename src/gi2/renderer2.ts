@@ -48,7 +48,7 @@ export type Gi2Params = {
 
 export const GI2_DEFAULTS: Gi2Params = {
   probeSpacing: 16,
-  rayCount: 20,
+  rayCount: 28,
   raySteps: 28,
   rayMax: 380,
   loDown: 6,
@@ -84,7 +84,7 @@ export const GI2_DEFAULTS: Gi2Params = {
 };
 
 const TILE = 32; // device px
-const TILE_SLOTS = 24; // 1 count + 23 indices (matches TILE_CAP in WGSL)
+const TILE_SLOTS = 32; // 1 count + 31 indices (matches TILE_CAP in WGSL)
 const MAX_SHAPES = 512; // matches the Scene store (full template pages fit)
 const FLOATS_PER_SHAPE = 20;
 

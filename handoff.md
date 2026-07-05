@@ -1124,3 +1124,35 @@ minor probe blotch at hard viewport edges.
 ### Files: gi2/GICanvasLite.tsx (new), gi2/renderer2.ts + lite.wgsl (grown),
 ### gi/GIContext.tsx (exports GIContext/ScreenSpec/OVERSCAN), gi/types.ts
 ### (engine field), GIProvider (switch), App.tsx (leva engine select).
+
+## Mobile diagnosis + lite near-field fix (2026-07-05)
+
+**Phone report (owner's Android, PowerVR "img-tec d-series")**: giDebug chip
+shows webgpu yes / init ok / error none — yet the page renders black except
+the DOM bloom. NOT a WebGPU-availability problem. Diagnosis tooling added:
+- `?giDebug` chip now shows renders/scale, a **stages probe** (reads back
+  8×8 center blocks of gScene/gNormal/cascade0/litTex max values —
+  trisects which pass goes dark; `window.__giProbe()`), and the FIRST
+  `device.onuncapturederror` (was console-only = invisible on phones; both
+  engines). G-buffer/lit textures gained COPY_SRC for this.
+- `?engine=lite|cascade` URL override (phone A/B without Studio).
+- Desktop Safari 26 verified running BOTH engines (cascade 120fps, lite ✓)
+  → WebKit WGSL compiles fine; iPhones on iOS 26 should work.
+AWAITING: owner re-opens ?giDebug on the phone → stages line + any GPU error
+pinpoints the dark pass on PowerVR.
+
+**Lite "weird artifacts on draggable lights" (owner) — FIXED, three parts:**
+1. **Direct near-field emitter term** (the big one): L0+L1 probes cannot
+   represent a nearby emitter's narrow cone — it smeared into a hard-edged
+   grey blob. Present now computes near-field light analytically per pixel
+   from tile-local emitters with the ANGULAR-SIZE kernel `asin(rEff/d)`
+   (matches the probe integral's scale exactly), faded 70..130px; probe rays
+   start at t0=40px (the cascade interval-split idea). Emissive shapes pad
+   their tile reach by 130px; TILE_CAP 23→31 (TILE_SLOTS 32 in renderer2).
+2. **Smooth probe rotation**: hashed per-probe ray rotation made distant
+   small emitters hit/miss randomly probe-to-probe → large low-frequency
+   RAINBOW BLOTCHES on the background. Rotation now varies continuously
+   across the grid (error becomes smooth drift). rayCount 20→28.
+3. **Contact ramp** on the direct kernel (smoothstep 0..6px past the
+   silhouette): the 90°-peak at contact amplified gather dither into a
+   speckled ring around emitters.

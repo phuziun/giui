@@ -190,6 +190,16 @@ export function GICanvas({
         // device must be destroyed HERE or it leaks one device per dev mount.
         if (disposed) { ctx.device.destroy(); return; }
         gpuDevice = ctx.device;
+        // Validation/OOM errors are console-only by default — invisible on a
+        // phone. Surface the FIRST one through onError (the giDebug chip).
+        let firstGpuErr = true;
+        ctx.device.onuncapturederror = (ev: GPUUncapturedErrorEvent) => {
+          console.error("[giui] GPU error:", ev.error.message);
+          if (firstGpuErr) {
+            firstGpuErr = false;
+            onErrorRef.current?.(`GPU error: ${ev.error.message.slice(0, 220)}`);
+          }
+        };
         // Unexpected device loss (driver reset, dual-GPU switch, TDR — NOT our
         // own destroy()): re-run this effect for a fresh device + pipelines.
         // The scene lives in React state, so lighting comes back where it was.
@@ -224,6 +234,9 @@ export function GICanvas({
         };
         gpuLabel = ctx.softwareGPU ? `⚠ SOFTWARE GPU (${ctx.gpuName})` : ctx.gpuName;
         onGPUInfoRef.current?.({ gpuName: ctx.gpuName, softwareGPU: ctx.softwareGPU });
+        // giDebug deep probe (reads back each pipeline stage's output).
+        (window as unknown as { __giProbe?: () => Promise<string> }).__giProbe = () =>
+          renderer ? renderer.probe() : Promise.resolve("no renderer");
         forceRender.current = true;
         setStatus("ok");
 

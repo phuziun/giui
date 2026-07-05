@@ -215,20 +215,27 @@ fn probeCS(@builtin(global_invocation_id) gid : vec3<u32>) {
   let center = U.probeOrigin + (vec2<f32>(gid.xy) + vec2<f32>(0.5)) * U.probeSpacing;
   let rays = u32(U.rayCount);
   let steps = u32(U.raySteps);
-  // Golden-ish per-probe rotation decorrelates neighbouring probes; the
-  // bilinear reconstruction then reads as smooth noise, not banding.
-  let rot = ign(vec2<f32>(gid.xy)) * TAU;
+  // Rotation varies SMOOTHLY across the grid (not hashed): with a random
+  // per-probe rotation, a small distant emitter is hit by a varying number
+  // of rays probe-to-probe, which reconstructs as large low-frequency colour
+  // blotches. A continuous rotation makes that error a smooth drift instead,
+  // while still breaking up angular spoke banding.
+  let rot = (f32(gid.x) * 0.618 + f32(gid.y) * 0.317) * (TAU / U.rayCount) * 2.0;
   var a0 = vec3<f32>(0.0);
   var a1 = vec3<f32>(0.0);
   var b1 = vec3<f32>(0.0);
   for (var r = 0u; r < rays; r = r + 1u) {
     let th = rot + (f32(r) + 0.5) / U.rayCount * TAU;
     let dir = vec2<f32>(cos(th), sin(th));
-    let dt = U.rayMax / f32(steps);
+    // Near field belongs to the analytic direct term in `present` (L0+L1
+    // can't represent a close emitter's narrow cone — it smears to a grey
+    // blob and rings). Rays start where the direct kernel hands over.
+    let t0 = 40.0;
+    let dt = (U.rayMax - t0) / f32(steps);
     var rad = vec3<f32>(0.0);
     var T = 1.0;
     for (var i = 0u; i < steps; i = i + 1u) {
-      let t = (f32(i) + 0.5) * dt;
+      let t = t0 + (f32(i) + 0.5) * dt;
       let q = center + dir * t;
       let qw = q - U.origin; // content -> window coords for the raster lookup
       if (qw.x < 0.0 || qw.y < 0.0 || qw.x >= U.cssSize.x || qw.y >= U.cssSize.y) { break; }
@@ -254,7 +261,7 @@ fn probeCS(@builtin(global_invocation_id) gid : vec3<u32>) {
 // layouts stay cheap in `present` because each pixel only shades its tile's
 // local shapes.
 
-const TILE_CAP = 23u; // + 1 count slot = 24 u32 per tile
+const TILE_CAP = 31u; // + 1 count slot = 32 u32 per tile
 
 @compute @workgroup_size(8, 8)
 fn tileCS(@builtin(global_invocation_id) gid : vec3<u32>) {
@@ -272,7 +279,10 @@ fn tileCS(@builtin(global_invocation_id) gid : vec3<u32>) {
     if (count >= TILE_CAP) { break; }
     let s = shapes[i];
     let half = select(s.geom.zw, vec2<f32>(s.geom.z), s.params.y > 0.5);
-    let reach = s.params.w + U.edgeAA + U.aoRadius + abs(s.params.z) * U.shadowScale + 4.0;
+    let isEmit = max(max(s.emission.r, s.emission.g), s.emission.b) > 0.0008;
+    // Emitters also reach as far as the direct near-field kernel (DIRECT_MAX).
+    let reach = s.params.w + U.edgeAA + U.aoRadius + abs(s.params.z) * U.shadowScale + 4.0
+              + select(0.0, 130.0, isEmit);
     let mn = s.geom.xy - half - vec2<f32>(reach);
     let mx = s.geom.xy + half + vec2<f32>(reach);
     if (mx.x < tcssMin.x || mx.y < tcssMin.y || mn.x > tcssMax.x || mn.y > tcssMax.y) { continue; }
@@ -338,6 +348,7 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   var disp = vec3<f32>(0.0);
   var matteHard = 0.0; // face + bevel lip of any matte shape (kills component GI)
   var matteSoft = 0.0; // feathered apron (reveals/curbs background GI smoothly)
+  var direct = vec3<f32>(0.0); // near-field emitter light (probes start at 40px)
   var gradH = vec2<f32>(0.0); // relief gradient (per-shape heightScale baked in)
   var hRaw = 0.0;             // physical height (AO / shadows)
   var ao = 0.0;
@@ -400,6 +411,24 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
       // (only ~a third of directions run up the gradient); the max alone
       // painted heavy rings around small chips.
       ao += max(max(hIn - h0, hOut - h0), 0.0) * 0.35;
+    }
+
+    // Direct near-field light: the angular-size kernel asin(r/d) matches the
+    // probe integral's scale (a pixel at distance d sees a disc of radius r
+    // under half-angle asin(r/d); the cascade gather integrates to the same
+    // for its near interval), so direct + far-field probes stay one seamless
+    // field. Faded out by DIRECT_MAX = 130 where the probes take over.
+    let eLum = max(max(s.emission.r, s.emission.g), s.emission.b);
+    if (eLum > 0.0008) {
+      let half = select(s.geom.zw, vec2<f32>(s.geom.z), s.params.y > 0.5);
+      let rEff = max(min(half.x, half.y) * 0.9, 2.0);
+      let dc = max(d + rEff, rEff + 0.5); // ~distance to the emitter's centre-ish
+      let ang = asin(clamp(rEff / dc, 0.0, 1.0));
+      // Ramp in over the first few px past the silhouette: at contact the
+      // kernel peaks (90°) exactly where the emitter-mask seam sits, and any
+      // gather dither there reads as a speckled ring around the emitter.
+      let fade = smoothstep(0.0, 6.0, d) * (1.0 - smoothstep(70.0, 130.0, d));
+      direct += s.emission.rgb * s.albedo.a * ang * fade;
     }
 
     // Cast shadow: ONE shifted SDF eval instead of a 10-step march. A raised
@@ -471,7 +500,8 @@ fn fs(in : VSOut) -> @location(0) vec4<f32> {
   let giMask = mix(bgGI, 1.0, max(cover, hmask) * (1.0 - matteHard));
   let dispLum = max(disp.r, max(disp.g, disp.b));
   let emisMask = smoothstep(0.0, 0.1, dispLum);
-  let giTerm = (flt + dir * U.giDirectional) * (U.giStrength * U.giProbeLift * giMask * (1.0 - emisMask));
+  let giTerm = (flt + dir * U.giDirectional + direct * (1.0 + 0.5 * U.giDirectional))
+             * (U.giStrength * U.giProbeLift * giMask * (1.0 - emisMask));
 
   var color = matl * (lit * (1.0 - aoT)) + giTerm * (1.0 - aoT) + disp * U.emissiveDisplay;
 

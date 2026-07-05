@@ -134,6 +134,14 @@ export function GICanvasLite({
           return;
         }
         gpuDevice = ctx.device;
+        let firstGpuErr = true;
+        ctx.device.onuncapturederror = (ev: GPUUncapturedErrorEvent) => {
+          console.error("[giui] GPU error (lite):", ev.error.message);
+          if (firstGpuErr) {
+            firstGpuErr = false;
+            onErrorRef.current?.(`GPU error: ${ev.error.message.slice(0, 220)}`);
+          }
+        };
         ctx.device.lost.then((info) => {
           if (disposed || info.reason === "destroyed") return;
           const now = Date.now();

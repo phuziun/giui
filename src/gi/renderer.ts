@@ -214,7 +214,9 @@ export class Renderer {
     return this.device.createTexture({
       size: [w, h],
       format: "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      // COPY_SRC: the giDebug probe reads small blocks back to pinpoint which
+      // stage goes dark on a misbehaving device (negligible cost otherwise).
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
   }
 
@@ -241,7 +243,7 @@ export class Renderer {
     this.litTex = this.device.createTexture({
       size: [this.rw, this.rh],
       format: LIT_FORMAT,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
 
     this.cascades = this.descs.map((d) => this.gbuf(d.texW, d.texH));
@@ -647,6 +649,59 @@ export class Renderer {
     }
 
     this.device.queue.submit([enc.finish()]);
+  }
+
+  /** giDebug deep probe: read back small center blocks of each stage and
+   *  report their max magnitude — trisects "which pass goes dark" on devices
+   *  where the page renders black despite a clean init. */
+  async probe(): Promise<string> {
+    const f16 = (h: number) => {
+      const s = (h & 0x8000) >> 15;
+      const e = (h & 0x7c00) >> 10;
+      const f = h & 0x03ff;
+      if (e === 0) return (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
+      if (e === 0x1f) return f ? NaN : (s ? -Infinity : Infinity);
+      return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
+    };
+    const stages: [string, GPUTexture][] = [
+      ["scene", this.gScene],
+      ["nrm", this.gNormal],
+      ["casc0", this.cascades[0]],
+      ["lit", this.litTex],
+    ];
+    const out: string[] = [];
+    for (const [name, tex] of stages) {
+      try {
+        const x = Math.max(0, (tex.width >> 1) - 4);
+        const y = Math.max(0, (tex.height >> 1) - 4);
+        const buf = this.device.createBuffer({
+          size: 256 * 8,
+          usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+        });
+        const enc = this.device.createCommandEncoder();
+        enc.copyTextureToBuffer(
+          { texture: tex, origin: { x, y } },
+          { buffer: buf, bytesPerRow: 256, rowsPerImage: 8 },
+          { width: 8, height: 8 }
+        );
+        this.device.queue.submit([enc.finish()]);
+        await buf.mapAsync(GPUMapMode.READ);
+        const u16 = new Uint16Array(buf.getMappedRange());
+        let mx = 0;
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 32; c++) {
+            const v = f16(u16[r * 128 + c]);
+            if (Number.isFinite(v)) mx = Math.max(mx, Math.abs(v));
+          }
+        }
+        buf.unmap();
+        buf.destroy();
+        out.push(`${name}=${mx.toFixed(3)}`);
+      } catch (e) {
+        out.push(`${name}=ERR(${String(e).slice(0, 40)})`);
+      }
+    }
+    return out.join(" ");
   }
 
   destroy() {

@@ -173,6 +173,8 @@ export function GICanvasLite({
           software: ctx.softwareGPU,
           engine: "lite",
         };
+        (window as unknown as { __giProbe?: () => Promise<string> }).__giProbe = () =>
+          renderer ? renderer.probe() : Promise.resolve("no renderer");
         applySize();
         setStatus("ok");
         needsRender.current = true;
@@ -259,8 +261,25 @@ export function GICanvasLite({
           const cssH = window.innerHeight + 2 * OVERSCAN;
           // Commit the window position in the same task as the frame.
           canvas.style.transform = `translate3d(0, ${top}px, 0)`;
-          renderer!.render(sceneRef.current, mapParams(paramsRef.current), cssW, cssH, dpr, top, screen);
+          try {
+            renderer!.render(sceneRef.current, mapParams(paramsRef.current), cssW, cssH, dpr, top, screen);
+          } catch (e) {
+            // A loop exception is otherwise INVISIBLE on a phone and kills
+            // rendering forever (this raf iteration already re-queued, but
+            // report loudly and stop hammering).
+            const msg = `render crashed: ${String(e).slice(0, 200)}`;
+            console.error("[giui lite]", e);
+            onErrorRef.current?.(msg);
+            setError(msg);
+            setStatus("error");
+            cancelAnimationFrame(raf);
+            return;
+          }
           renderCount.current++;
+          (window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf = {
+            renders: renderCount.current,
+            scale: 1,
+          };
           canvas.style.opacity = "1";
         };
         raf = requestAnimationFrame(loop);

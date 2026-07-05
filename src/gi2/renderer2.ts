@@ -157,7 +157,7 @@ export class Renderer2 {
     this.emitTex = dev.createTexture({
       size: [loW, loH],
       format: "rgba16float",
-      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
     const px = Math.max(2, Math.ceil(cssW / p.probeSpacing) + 2);
     const py = Math.max(2, Math.ceil(cssH / p.probeSpacing) + 2);
@@ -165,7 +165,7 @@ export class Renderer2 {
       dev.createTexture({
         size: [px, py],
         format: "rgba16float",
-        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       })
     );
     const tilesX = Math.ceil(outW / TILE);
@@ -332,6 +332,47 @@ export class Renderer2 {
       r.end();
     }
     dev.queue.submit([enc.finish()]);
+  }
+
+  /** giDebug probe: max |value| of small center blocks per stage (see the
+   *  cascade renderer's probe — same idea, lite's two textures). */
+  async probe(): Promise<string> {
+    const f16 = (h: number) => {
+      const s = (h & 0x8000) >> 15;
+      const e = (h & 0x7c00) >> 10;
+      const f = h & 0x03ff;
+      if (e === 0) return (s ? -1 : 1) * Math.pow(2, -14) * (f / 1024);
+      if (e === 0x1f) return f ? NaN : (s ? -Infinity : Infinity);
+      return (s ? -1 : 1) * Math.pow(2, e - 15) * (1 + f / 1024);
+    };
+    const stages: [string, GPUTexture][] = [
+      ["emit", this.emitTex],
+      ["ch0", this.chTex[0]],
+    ];
+    const out: string[] = [];
+    for (const [name, tex] of stages) {
+      try {
+        const x = Math.max(0, (tex.width >> 1) - 4);
+        const y = Math.max(0, (tex.height >> 1) - 4);
+        const buf = this.ctx.device.createBuffer({ size: 256 * 8, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+        const enc = this.ctx.device.createCommandEncoder();
+        enc.copyTextureToBuffer({ texture: tex, origin: { x, y } }, { buffer: buf, bytesPerRow: 256, rowsPerImage: 8 }, { width: 8, height: 8 });
+        this.ctx.device.queue.submit([enc.finish()]);
+        await buf.mapAsync(GPUMapMode.READ);
+        const u16 = new Uint16Array(buf.getMappedRange());
+        let mx = 0;
+        for (let row = 0; row < 8; row++) for (let c = 0; c < 32; c++) {
+          const v = f16(u16[row * 128 + c]);
+          if (Number.isFinite(v)) mx = Math.max(mx, Math.abs(v));
+        }
+        buf.unmap();
+        buf.destroy();
+        out.push(`${name}=${mx.toFixed(3)}`);
+      } catch (e) {
+        out.push(`${name}=ERR(${String(e).slice(0, 40)})`);
+      }
+    }
+    return out.join(" ");
   }
 
   destroy() {

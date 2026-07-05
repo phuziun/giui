@@ -558,6 +558,18 @@ function parseRoute(hash: string): string {
 function GIDebugChip({ engine, err }: { engine: string; err: string }) {
   const [tick, setTick] = useState(0);
   const [probe, setProbe] = useState("…");
+  const [jsErr, setJsErr] = useState("");
+  useEffect(() => {
+    // Loop/async crashes never reach the chip otherwise.
+    const onE = (ev: ErrorEvent) => setJsErr((p) => p || `js: ${String(ev.message).slice(0, 160)}`);
+    const onR = (ev: PromiseRejectionEvent) => setJsErr((p) => p || `promise: ${String(ev.reason).slice(0, 160)}`);
+    window.addEventListener("error", onE);
+    window.addEventListener("unhandledrejection", onR);
+    return () => {
+      window.removeEventListener("error", onE);
+      window.removeEventListener("unhandledrejection", onR);
+    };
+  }, []);
   useEffect(() => {
     const t = window.setInterval(() => setTick((x) => x + 1), 1000);
     // Deep probe once the renderer is up: reads back each stage's output so a
@@ -590,6 +602,7 @@ init: ${init ? `ok — ${init.gpu}${init.software ? " (SOFTWARE)" : ""}, dev ${i
 renders: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.renders ?? "?"} scale: ${(window as unknown as { __giPerf?: { renders: number; scale: number } }).__giPerf?.scale ?? "?"}
 stages: ${probe}
 error: ${err || "none"}
+jsError: ${jsErr || "none"}
 ua: ${navigator.userAgent.slice(0, 80)}`}
     </div>
   );

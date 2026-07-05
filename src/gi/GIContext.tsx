@@ -487,15 +487,27 @@ export function GICanvas({
               needsRender.current = false;
               lastLoopOffset = top;
               const t0 = performance.now();
-              renderer!.render(
-                scene,
-                paramsRef.current,
-                backingScale.current,
-                adaptiveOn() ? dynScale : 1,
-                { top, height },
-                mode,
-                screen
-              );
+              try {
+                renderer!.render(
+                  scene,
+                  paramsRef.current,
+                  backingScale.current,
+                  adaptiveOn() ? dynScale : 1,
+                  { top, height },
+                  mode,
+                  screen
+                );
+              } catch (e) {
+                // Otherwise invisible on a phone: the exception killed the
+                // frame (and, before this catch, silently ended rendering).
+                const msg = `render crashed: ${String(e).slice(0, 200)}`;
+                console.error("[giui]", e);
+                onErrorRef.current?.(msg);
+                setError(msg);
+                setStatus("error");
+                cancelAnimationFrame(raf);
+                return;
+              }
               // Position the viewport canvas at the content offset it was just
               // rendered for — same task as the render, so the new frame and
               // its position commit to the compositor atomically. In content

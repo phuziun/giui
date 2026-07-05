@@ -1178,7 +1178,41 @@ BATTERY caps headless-Chrome rAF at 30Hz — a "4x regression" measured
 during this work was partly/wholly the battery, not the code. Re-bench
 plugged in before trusting numbers.
 
-## ⚠ UNRESOLVED: PowerVR phone still black after the shapetex fix (2026-07-05)
+## ✅ RESOLVED: Pixel 10 / PowerVR black screen (2026-07-05, later session)
+
+**Root cause**: the PowerVR "img-tec d-series" driver **miscompiles vertex
+shaders that index a shader-local array with `@builtin(vertex_index)`** —
+positions go degenerate, every triangle is silently culled (no validation
+error, no device loss). The fullscreen-triangle pattern in composite.wgsl,
+present.wgsl, and lite.wgsl was exactly that, so NO fragment pass ever drew a
+pixel on the phone; all the compute passes (scene/cascades — and their storage
+buffers and uniforms) were healthy the whole time.
+
+**Fix (shipped, commit `ea2278d`)**: the three `vs()` entry points now build the
+same triangle from bit math (`f32(i32(vi & 1u) * 4 - 1)`, …) — verified
+identical on desktop, and BOTH engines now fully render on the Pixel 10
+(cascade `lit=0.04` matching desktop; lite at native 1078×3045). The earlier
+"storage buffers read as zeros" diagnosis was WRONG — a probe artifact (desktop
+reads the same scene=0.00 zeros at viewport center); `shapeSource.ts` no longer
+auto-enables the texture path on img-tec (`?shapetex=1` kept as an escape
+hatch). Also added `?debugMode=0..8` URL override (remote debug-view triage).
+
+**How it was cracked — autonomous on-phone loop (REUSE THIS: `tools/README.md`)**:
+adb wireless pairing (`adb mdns services` reveals the real pairing port — the
+dialog port, NOT the main-screen connect port) → `adb reverse tcp:5173` so the
+phone hits the local dev server as a secure context (no deploy round-trips) →
+`adb forward tcp:9333 localabstract:chrome_devtools_remote` → drive phone
+Chrome over CDP (`tools/phone-cdp.mjs`: shot/eval/evalfile/nav). Phone must be
+awake+unlocked or screenshots hang. Binding-type repros run via
+`Runtime.evaluate` (`tools/webgpu-vi-array-repro.js` is the minimal driver-bug
+repro, kept for a Chromium/Imagination bug report — worth filing, owner's call).
+Emulators/VMs CANNOT reproduce driver bugs (AVD passes GPU through to the host).
+
+**GPU canary** (hypothesis-tree item 4) remains a good idea for library
+robustness on future broken drivers: render one known shape to a tiny offscreen
+target at init, read back, disable lighting gracefully on failure. Not built yet.
+
+## ~~UNRESOLVED~~ (superseded by the section above): PowerVR phone still black after the shapetex fix (2026-07-05)
 
 Owner reports the phone is STILL not working after the dual-path deploy.
 NO post-fix chip screenshot was captured — so it is unknown whether:
